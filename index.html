@@ -28,16 +28,29 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--asphalt);color:var(--sheeting);font-family:var(--sign)}
-body{padding:calc(16px + env(safe-area-inset-top)) var(--pad) calc(28px + env(safe-area-inset-bottom));
+body{padding:0 var(--pad) calc(28px + env(safe-area-inset-bottom));
   max-width:760px;margin:0 auto;min-height:100vh;
   background-image:radial-gradient(120% 80% at 50% -10%, #1E2836 0%, var(--asphalt) 60%)}
+
+/* Sticky collapsing deck: header + score + map stay pinned and shrink on scroll */
+.deck{position:sticky;top:0;z-index:10;
+  margin:0 calc(-1 * var(--pad));padding:calc(14px + env(safe-area-inset-top)) var(--pad) 6px;
+  background:var(--asphalt);transition:box-shadow .25s ease,background .25s ease}
+body.scrolled .deck{box-shadow:0 10px 24px -8px rgba(0,0,0,.7);background:rgba(20,26,35,.96);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+/* title collapses away as you scroll */
+.sign{overflow:hidden;transition:max-height .3s ease,opacity .25s ease,margin .3s ease,transform .3s ease;
+  max-height:120px}
+body.scrolled .sign{max-height:0;opacity:0;margin-top:-4px;transform:translateY(-6px);box-shadow:none}
+body.scrolled .sign::after{opacity:0}
 
 .sign{background:var(--guide);border-radius:10px;padding:14px 16px;position:relative;box-shadow:0 6px 22px rgba(0,0,0,.45)}
 .sign::after{content:"";position:absolute;inset:5px;border:2px solid rgba(244,246,241,.85);border-radius:6px;pointer-events:none}
 .sign h1{margin:0;font-weight:700;font-size:clamp(19px,5.2vw,26px);line-height:1.1;text-transform:uppercase;letter-spacing:.01em}
 .sign .sub{margin:5px 0 0;font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:rgba(244,246,241,.7)}
 
-.tally{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 2px 10px}
+.tally{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 2px 10px;transition:margin .3s ease}
+body.scrolled .tally{margin:0 2px 8px}
 .stat{display:flex;align-items:baseline;gap:7px}
 .stat b{font-family:var(--data);font-weight:700;font-size:26px;letter-spacing:-.02em;display:inline-block}
 .stat span{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
@@ -49,13 +62,22 @@ body{padding:calc(16px + env(safe-area-inset-top)) var(--pad) calc(28px + env(sa
   padding:9px 15px;border-radius:6px;cursor:pointer;transition:.16s ease}
 .share:hover{background:var(--guide);border-color:var(--guide);color:var(--sheeting)}
 .share:focus-visible{outline:2px solid var(--sheeting);outline-offset:2px}
-.bar{height:5px;border-radius:99px;background:var(--edge);overflow:hidden;margin:0 2px 16px}
+.bar{height:5px;border-radius:99px;background:var(--edge);overflow:hidden;margin:0 2px 16px;transition:margin .3s ease}
+body.scrolled .bar{margin:0 2px 8px}
 .bar i{display:block;height:100%;width:0;background:var(--guide-lit);transition:width .5s cubic-bezier(.2,.8,.2,1)}
 
 /* Map */
 .mapbox{position:relative;overflow:hidden;background:var(--dusk);border:1px solid var(--edge);
-  border-radius:12px;padding:8px 6px 4px;margin:0 0 8px}
+  border-radius:12px;padding:8px 6px 4px;margin:0 0 8px;
+  transition:max-height .32s ease,padding .32s ease,margin .32s ease}
+.mapframe{transition:transform .32s ease;transform-origin:top center}
 svg.usa{width:100%;height:auto;display:block}
+/* compact: map shrinks to a pinned mini-board so the celebration stays in view */
+body.scrolled .mapbox{max-height:104px;padding:6px 6px 2px;margin:0}
+body.scrolled .mapframe{transform:scale(.46)}
+body.scrolled .maplegend{max-height:0;opacity:0;margin:0;overflow:hidden}
+body.scrolled .hint{max-height:0;opacity:0;margin:0;overflow:hidden;padding:0}
+.maplegend,.hint{transition:max-height .3s ease,opacity .25s ease,margin .3s ease}
 .st{fill:var(--df);stroke:#141A23;stroke-width:.9;stroke-linejoin:round;transition:fill .3s ease,filter .3s ease}
 .st.on{fill:var(--sheeting);filter:drop-shadow(0 0 4px var(--rc))}
 .st.lit{animation:catch .7s ease-out}
@@ -70,11 +92,12 @@ svg.usa{width:100%;height:auto;display:block}
   font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
 .maplegend b{display:inline-flex;align-items:center;gap:5px;font-weight:600}
 .maplegend i{width:8px;height:8px;border-radius:2px;display:block}
-.hint{text-align:center;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin:0 0 18px}
+.hint{text-align:center;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin:0 0 8px;max-height:30px}
 
-/* The callout */
-.shout{position:absolute;left:50%;top:46%;z-index:6;pointer-events:none;text-align:center;
-  width:96%;transform:translate(-50%,-50%)}
+/* The callout — fixed layer, always on screen no matter the scroll position */
+.celebrate{position:fixed;left:0;right:0;z-index:30;pointer-events:none;display:flex;justify-content:center}
+.shout{position:absolute;left:50%;top:0;z-index:6;pointer-events:none;text-align:center;
+  width:96%;max-width:640px;transform:translate(-50%,-50%)}
 .shout .fl{position:absolute;left:50%;top:50%;width:min(94%,420px);aspect-ratio:1;
   transform:translate(-50%,-50%) scale(.2);
   background:radial-gradient(circle,var(--fc) 0%,transparent 62%);
@@ -168,27 +191,33 @@ svg.usa{width:100%;height:auto;display:block}
 </head>
 <body>
 
-<header class="sign">
-  <h1>License Plate Bingo</h1>
-  <p class="sub">Spot every state</p>
-</header>
+<div class="deck" id="deck">
+  <header class="sign">
+    <h1>License Plate Bingo</h1>
+    <p class="sub">Spot every state</p>
+  </header>
 
-<div class="tally">
-  <div class="stat"><b id="found">0</b><span>/ <i id="total">51</i> spotted</span></div>
-  <div class="stat pts"><b id="pts">0</b><span>points</span></div>
-  <button class="share" id="share">Share</button>
-</div>
-<div class="bar"><i id="fill"></i></div>
+  <div class="tally">
+    <div class="stat"><b id="found">0</b><span>/ <i id="total">51</i> spotted</span></div>
+    <div class="stat pts"><b id="pts">0</b><span>points</span></div>
+    <button class="share" id="share">Share</button>
+  </div>
+  <div class="bar"><i id="fill"></i></div>
 
-<div class="mapbox" id="mapbox">
-  <svg class="usa" id="usa" viewBox="0 0 960 600" role="img" aria-labelledby="usa-t">
-    <title id="usa-t">Map of states spotted so far</title>
-    <g id="states"></g>
-    <circle class="dot" id="dot-DC" r="5"></circle>
-  </svg>
-  <div class="maplegend" id="maplegend"></div>
+  <div class="mapbox" id="mapbox">
+    <div class="mapframe" id="mapframe">
+      <svg class="usa" id="usa" viewBox="0 0 960 600" role="img" aria-labelledby="usa-t">
+        <title id="usa-t">Map of states spotted so far</title>
+        <g id="states"></g>
+        <circle class="dot" id="dot-DC" r="5"></circle>
+      </svg>
+    </div>
+    <div class="maplegend" id="maplegend"></div>
+  </div>
+  <p class="hint" id="hint">Dark states are still out there</p>
 </div>
-<p class="hint">Dark states are still out there</p>
+
+<div class="celebrate" id="celebrate" aria-hidden="true"></div>
 
 <div class="sectionhead"><h2>Still Out There</h2><span id="huntcount"></span></div>
 <div class="list" id="hunt"></div>
@@ -374,11 +403,14 @@ const SHOUT={
   rare:    {text:true,  flare:true,  burn:false, dur:1750},
   legend:  {text:true,  flare:true,  burn:true,  dur:2250}
 };
+const celebrate=document.getElementById('celebrate');
 function shout(code){
   const i=INDEX[code], cfg=SHOUT[i.tier];
   if(!cfg.text) return;
-  const box=document.getElementById('mapbox');
-  box.querySelectorAll('.shout').forEach(n=>n.remove());
+  celebrate.innerHTML='';
+  // anchor the layer over wherever the map is right now (full or collapsed)
+  const r=document.getElementById('mapbox').getBoundingClientRect();
+  celebrate.style.top=Math.max(r.top+r.height/2,64)+'px';
   const name=i.name.toUpperCase();
   const size=Math.min(46,Math.max(19,470/Math.max(name.length,6)));
   const el=document.createElement('div');
@@ -388,8 +420,8 @@ function shout(code){
   el.innerHTML=(cfg.flare?`<div class="fl"></div>`:'')+
     `<div class="nm" style="font-size:${size.toFixed(1)}px">${name}</div>
      <div class="pt">+${i.pts} · ${TIER[i.tier].label}</div>`;
-  box.appendChild(el);
-  setTimeout(()=>el.remove(),cfg.dur+80);
+  celebrate.appendChild(el);
+  setTimeout(()=>{ if(el.parentNode===celebrate) celebrate.innerHTML=''; },cfg.dur+80);
 }
 function burn(code){
   const el=document.getElementById('st-'+code);
@@ -491,6 +523,21 @@ document.getElementById('reset').addEventListener('click',()=>{
     <button type="button">Got it</button>`;
   el.querySelector('button').addEventListener('click',()=>{ store.set('lpb.nudged','1'); el.remove(); });
   setTimeout(()=>document.body.appendChild(el),1400);
+})();
+
+/* ── collapse the deck on scroll, with a dead zone so it doesn't flicker ── */
+(function(){
+  let compact=false, ticking=false;
+  function apply(){
+    const y=window.scrollY||window.pageYOffset||0;
+    if(!compact && y>52){ compact=true; document.body.classList.add('scrolled'); }
+    else if(compact && y<16){ compact=false; document.body.classList.remove('scrolled'); }
+    ticking=false;
+  }
+  window.addEventListener('scroll',()=>{
+    if(!ticking){ ticking=true; requestAnimationFrame(apply); }
+  },{passive:true});
+  apply();
 })();
 
 /* ── service worker: register, and auto-reload once when a new one takes over ── */
