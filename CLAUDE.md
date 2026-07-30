@@ -11,16 +11,15 @@ the decisions and the reasoning, which the code can't tell you.
 - **The owner works from an iPhone.** He edits and deploys through the GitHub
   web UI. Any setup step should be copy-paste, never "run this command" or
   "edit line 412 of index.html."
-- The big `GEO` object near the top of the script is machine-generated Albers
-  USA projection path data (~163KB). Never hand-edit it — and never read
-  `index.html` straight through. The file is only ~730 lines, but line 265 is
-  that one 163KB line, and reading it whole burns most of an assistant's
-  context for nothing. Search for named landmarks instead: `store` / `readJSON`
-  (persistence), `TIER`, `STATES`, `OPTIONAL`, `INDEX` (data model), `ACH` /
-  `achProgress` (achievements), `totals` (scoring), `SHOUT` / `burn`
-  (celebrations), `syncDeck` (sticky header), `buildShare` (share text),
-  `SB_URL` / `rpc` / `queue` / `flush` / `reconcile` (group play sync),
-  `renderGame` / `phase` (group play UI).
+- `index.html` is ~58KB and safe to read straight through. It used to carry a
+  163KB `GEO` blob of Albers projection paths for the map; the map is gone and
+  so is the blob. If you only need one area, the landmarks are: `store` /
+  `readJSON` (persistence), `TIER`, `STATES`, `OPTIONAL`, `INDEX` (data model),
+  `ACH` / `achProgress` / `unlockCheck` (achievements), `totals` (scoring),
+  `renderProgress` (the states bar), `SHOUT` / `burn` (celebrations),
+  `syncDeck` (sticky header), `buildShare` (share text), `SB_URL` / `rpc` /
+  `queue` / `flush` / `reconcile` (group play sync), `renderGame` / `phase`
+  (group play UI).
 
 ## Deploy ritual — the one thing that will bite you
 
@@ -45,8 +44,20 @@ All paths are relative (`./`) so the app works from a repo subpath.
   worth **1 / 2 / 5 / 10** points. Tiers are calibrated for the DC-Maryland
   corridor: MD, VA, DC, PA are 1pt; AK, HI, ID, MT, ND, SD, WY are 10pt.
   Perfect states board = 214 pts.
-- Three optional groups (Territories, Canadian Provinces, Special Plates), all
-  **on by default**, each collapsible with its own on/off switch.
+- Three optional groups (Territories, Canadian Provinces, Special Plates).
+  **Always on. There is no switch.** They used to be per-player toggles, which
+  is the only reason group play ever needed a locked ruleset. Making them
+  constant means any two scores are comparable by construction. `live()` is
+  therefore just `!!INDEX[c]` — every known code counts, always. The board is
+  **73 plates** (`BOARD_SIZE`).
+- **Progress and score measure different things, on purpose.** The hero bar in
+  the deck counts **states only** — 51 plates, 214 pts, all genuinely findable.
+  The optional groups hold ~310 pts on seven plates nobody will realistically
+  see on a US road trip (four island territories, three far-north Canadian
+  ones), so counting them would cap the bar at 62% forever. They stay in the
+  score as pure bonus. **Progress means states; score means everything.**
+  The `any:` achievements (`start`, `half`) count states for the same reason —
+  as "any plate" they fired at 36% of the board and contradicted the bar.
 - **Points work two different ways — this is the easiest thing to get wrong.**
   For the states group, points come from the tier. For the three optional
   groups, **each item carries its own point value** (Guam 40, Ontario 10,
@@ -57,7 +68,21 @@ All paths are relative (`./`) so the app works from a repo subpath.
   sweep.
 - **13 achievements** worth 112 bonus points total — regional sweeps, pattern
   sets, and milestones. Always visible with live progress; a hidden achievement
-  does nothing for the player who's behind.
+  does nothing for the player who's behind. Each has an **emoji badge** (`e:`),
+  dimmed and desaturated while locked and lit when earned — the console
+  "locked silhouette" idiom, and emoji are the only way to get badge art
+  without fetching an asset. `unlockCheck()` diffs against `earnedIds` and
+  fires an **"Achievement unlocked" banner**, deliberately styled unlike the
+  plate callout and delayed ~900ms behind it so the two never read as one
+  event. `earnedIds` is seeded from the saved board at load, so nothing fires
+  on app start.
+- **Known imbalance, left alone deliberately.** Optional plates average 27 pts
+  against a state's 4.2, so one lucky Yukon can out-earn a week of hunting; and
+  52% of the achievement bonus hinges on the 7 legendary states (missing
+  Montana alone costs 60). Both are real. Rebalancing waits for evidence from
+  an actual trip. Note it is **not free later**: `spots.pts` is frozen at spot
+  time and `add_spot` is `on conflict do nothing`, so old rows keep old values
+  and would need a migration.
 - Each spot stores a timestamp. `claimed` is a `Map` of code → timestamp, with a
   backward-compatible reader for an older array format. Don't break that reader.
 
@@ -69,7 +94,6 @@ the group-play keys by `saveGame()` / `saveOutbox()`.
 | Key | Holds |
 | --- | --- |
 | `lpb.claimed` | The board. Object of `code → timestamp`. |
-| `lpb.groups` | Array of enabled optional group ids (`terr`, `prov`, `spec`). |
 | `lpb.open` | Array of expanded section ids. |
 | `lpb.sort` | `'az'` or `'pts'`. Plain string, not JSON. |
 | `lpb.nudged` | `'1'` once the iOS install tip is dismissed. |
@@ -79,8 +103,9 @@ the group-play keys by `saveGame()` / `saveOutbox()`.
 | `lpb.synced` | Codes the server has confirmed, so `reconcile()` knows what's missing. |
 | `lpb.board` | Last scoreboard fetched, shown when offline. |
 
-`lpb.groups` is **not written while in a game** — the ruleset is locked, and the
-solo choices have to survive so they can be restored on leaving.
+Devices from before the always-on change still have a stale `lpb.groups` key.
+Nothing reads it any more. Leave it — deleting it buys nothing and a cleanup
+pass is one more thing that can throw before the UI renders.
 
 `lpb.claimed` **writes** as an object but **reads** either an object or the
 legacy array of bare codes (which loads with null timestamps). Keep both paths.
@@ -90,24 +115,36 @@ mean a blank screen with no way back except clearing site data.
 
 ## UI decisions and why
 
-- **The map is display-only.** Taps happen in the list. An earlier version used
-  a tappable hex grid; it was replaced because 12 columns can't give a 44px tap
-  target on a phone.
-- **Rarity is visible before you find something.** Unfound states are tinted by
-  tier, so the empty Mountain West glows faintly red.
-- **Celebration scales with rarity** so it doesn't go stale: commons get a map
-  flash only, uncommon a text pop, rare adds a headlight flare, legendary dims
-  the whole map to black and burns one state white. Legendary fires ~7 times a
-  game — that scarcity is the point. Don't level this up for commons.
-- The callout is a **fixed overlay**, not a child of the map, so it stays on
+- **There is no map. It was removed on purpose — do not add it back.** It was
+  display-only, ate about a third of the phone viewport permanently, was too
+  small at phone size to read a single state, and made the sticky deck tall
+  enough to fight the keyboard in the group-play form. Its space went to the
+  two things actually looked at: the score and the shared scoreboard.
+  **Accepted loss:** the map was the only sense of *where* the unfound rare
+  plates are — "the empty Mountain West glows faintly red". Rarity survives as
+  row colour and points; the geography does not. That was the trade.
+  (The app icons still depict the map. They are the home-screen identity and
+  are unaffected by what the page renders. Leave them.)
+- **The score is the identity now.** The deck is wordmark, a display-size
+  points figure, the spotted count, and the states progress bar — all of which
+  shrink on scroll via the existing `.scrolled` class.
+- **Rarity is visible before you find something.** Unfound plates are tinted by
+  tier in the list, and the group headers say how many points are still out.
+- **Celebration scales with rarity** so it doesn't go stale: commons get the
+  score-figure pulse and the row tick only, uncommon a name pop, rare adds a
+  headlight flare, legendary blacks out **the whole screen** and burns the name
+  white. That last one replaced a map dim; the stage got bigger, the idea did
+  not change. Legendary fires ~7 times a game — that scarcity is the point.
+  Don't level this up for commons.
+- The callout is a **fixed overlay** anchored below the deck, so it stays on
   screen when the user is scrolled down in the list.
 - **Undo** appears for ~4s after any spot. Mis-taps in a moving car are the
   main failure mode.
 - Found plates **leave the hunt list** after a 400ms hold, then collapse and
   slide out. The delay is deliberate anti-mis-tap: nothing reflows under a
   thumb that's still moving.
-- Header is a **slim wordmark**, not the original green highway sign. The map
-  is the identity now; the sign competed with it.
+- Header is a **slim wordmark**, not the original green highway sign. The sign
+  competed with the content below it and lost.
 
 ## Deliberately rejected — do not re-suggest
 
@@ -115,7 +152,10 @@ mean a blank screen with no way back except clearing site data.
 - Escalating point multipliers for unfound plates, and first-finder bonuses
   (both exploitable with separate boards: sit on a plate, cash in later)
 - One shared synced board with exclusive first-spotter claims
-- Hide/show toggle for the map
+- The map, in any form — including a hide/show toggle, a collapsed version, or
+  a smaller one. This was reconsidered once, on a phone, and the answer was to
+  delete it rather than shrink it.
+- Per-player switches for the optional groups, and per-game rulesets
 - Grouping the Spotted list by day
 - Screen Wake Lock and regional point re-weighting (deferred, not dead)
 - Confetti (replaced by the headlight flare — it fits the road vocabulary)
@@ -135,9 +175,15 @@ and re-run it in the dashboard's SQL editor, don't hand-change the database.
   end, boards freeze and the scoreboard finalizes into a recap.
 - An **entry** is either one player or a team. A team is just an entry with
   several devices writing to one board — do not sum individual boards.
-- **The ruleset is locked at game creation.** Which optional groups are in play
-  must be set once by the creator and applied to everyone, or scores aren't
-  comparable. This moves those toggles from personal settings to game settings.
+- **Everyone plays the same 73-plate board.** There is no ruleset to choose.
+  An earlier design locked a per-game ruleset at creation, because optional
+  groups were per-player switches and scores otherwise wouldn't compare.
+  Removing the switches removed the problem, and with it `applyRuleset()` and
+  the "ruleset is locked" toast. **The `ruleset` column stays in the database
+  and `create_game` is still sent every group id** — that costs nothing, avoids
+  a migration, and leaves the door open if per-game rulesets ever return.
+  Nothing reads it, so a player mid-game with an old partial ruleset simply
+  gets the full board.
 - Scoreboard shows **totals only** — not who found what.
 - One exception agreed to: a **recent-activity line** ("Ellie spotted Montana ·
   4m ago"). It's what makes the scoreboard feel live.
@@ -183,6 +229,16 @@ branch"; do not delete the workflow thinking it caused the old build failures.
   browser snaps to top → expands → repeat. `syncDeck()` measures how much the
   deck shrinks and only collapses when there'll still be scroll room afterward.
   Re-measured on resize and whenever a section opens or closes.
+- **The deck freezes while a field has focus.** A focused input makes iOS
+  scroll the page, which re-triggers that same loop — and this time it fights
+  the keyboard, which is how it showed up: typing a game name made the page
+  bounce. `focusin` sets `deckLocked` and pins the deck compact, `focusout`
+  clears it, and `syncDeck()` returns early while set. Fixed at the root; do
+  not "solve" this again by tuning the 52px / 28px thresholds.
+- **`.gform input` must keep `appearance:none` and `min-width:0`.** iOS ignores
+  an author width on `input[type=date]` otherwise, and the date fields spill
+  out of the card. `box-sizing:border-box` is already global and is *not* the
+  fix here.
 - **localStorage has a try/catch fallback** to an in-memory object, because
   sandboxed preview iframes block it.
 - Fonts are cached by the service worker so a dead zone doesn't strip the
