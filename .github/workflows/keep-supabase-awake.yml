@@ -1,0 +1,47 @@
+name: Keep Supabase awake
+
+# Free Supabase projects pause after 7 days with no requests. A paused project
+# means the shared scoreboard is dead until someone restores it by hand from the
+# dashboard — which you will discover at the worst possible moment, i.e. at the
+# start of a road trip. This runs a real query often enough that the timer never
+# gets close.
+#
+# THIS IS UNRELATED TO GITHUB PAGES. Pages stays on "Deploy from a branch";
+# CLAUDE.md's warning against the Actions *source* is about that setting, not
+# about this workflow. Deleting this will not fix a Pages problem — it will
+# quietly let the database fall asleep.
+
+on:
+  schedule:
+    # Every 3rd day at 09:17 UTC. Deliberately not weekly: GitHub delays or
+    # drops scheduled runs under load, and the pause window is only 7 days.
+    # An odd minute avoids the on-the-hour congestion GitHub warns about.
+    - cron: '17 9 */3 * *'
+  workflow_dispatch:   # so you can run it by hand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query the database
+        run: |
+          # The publishable key is already public in index.html on the live
+          # site — that is what it is for. Nothing secret is exposed here, and
+          # keeping it inline means there is no repo secret to silently expire.
+          URL="https://bejgcgrbdrnuvwvcqrvz.supabase.co/rest/v1/games?select=id&limit=1"
+          KEY="sb_publishable_t64k5eE5QNvOKH-348LLvA_b7ogAGTA"
+
+          code=$(curl -sS -o body.txt -w '%{http_code}' \
+                 --max-time 30 --retry 3 --retry-delay 10 \
+                 -H "apikey: $KEY" "$URL")
+
+          echo "HTTP $code"
+          echo "response: $(cat body.txt)"
+
+          # Fail loudly. A silent failure here is the whole thing this guards
+          # against, and a failed run emails the repo owner.
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase ping failed (HTTP $code). The project may be paused — restore it at supabase.com/dashboard."
+            exit 1
+          fi
+          echo "Database is awake."
