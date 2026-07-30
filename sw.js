@@ -2,7 +2,7 @@
    BUMP THIS STRING EVERY TIME YOU CHANGE index.html.
    Nothing else in the deploy matters as much as this line.
    ───────────────────────────────────────────────────────────── */
-const VERSION = 'lpb-2026-07-29a';
+const VERSION = 'lpb-2026-07-29b';
 
 const FONTS = VERSION + '-fonts';
 const SHELL = [
@@ -25,7 +25,8 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   let url;
   try { url = new URL(req.url); } catch (err) { return; }
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com'
+      || url.hostname === 'cdn.jsdelivr.net') {
     e.respondWith(caches.open(FONTS).then(async cache => {
       const hit = await cache.match(req);
       const net = fetch(req).then(res => { if (res && res.ok) cache.put(req, res.clone()); return res; }).catch(() => hit);
