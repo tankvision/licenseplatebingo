@@ -229,12 +229,29 @@ branch"; do not delete the workflow thinking it caused the old build failures.
   browser snaps to top → expands → repeat. `syncDeck()` measures how much the
   deck shrinks and only collapses when there'll still be scroll room afterward.
   Re-measured on resize and whenever a section opens or closes.
+- **That guard needs hysteresis, and it now has it.** It takes >96px of room to
+  collapse but only <24px to expand again. With one shared threshold the deck
+  flips twice while a spotted row animates out — the page height crosses the
+  line, the scroll clamp moves you, and the rule reverses. Two asymmetric
+  numbers, not one; don't "simplify" them back together.
+- **`holdDeck(ms)` freezes the deck through anything that animates the page
+  height** — a spotted row leaving (900ms), a field losing focus (140ms).
+  Cheaper and more honest than trying to make `syncDeck()` correct mid-flight.
+- **Never animate layout properties inside the deck.** It is `position:sticky`,
+  so a transitioning `font-size` reflows it every frame for 300ms and iOS
+  renders that as judder. The score figure snaps between sizes on purpose.
+- **The score figures reserve their digits (`min-width` in `ch`) and pulse from
+  `transform-origin:left center`.** Both exist because the header visibly
+  twitched on every tap once the points figure grew to 46px: a centred 1.2×
+  scale throws big type around, and 9→10 widening the number shoved the
+  spotted count sideways. Scale multipliers here are tuned to the font size —
+  re-check them if that size changes.
 - **The deck freezes while a field has focus.** A focused input makes iOS
   scroll the page, which re-triggers that same loop — and this time it fights
   the keyboard, which is how it showed up: typing a game name made the page
   bounce. `focusin` sets `deckLocked` and pins the deck compact, `focusout`
-  clears it, and `syncDeck()` returns early while set. Fixed at the root; do
-  not "solve" this again by tuning the 52px / 28px thresholds.
+  hands off to `holdDeck(140)`, and `syncDeck()` returns early while locked.
+  Fixed at the root; do not "solve" this again by tuning the thresholds.
 - **`.gform input` must keep `appearance:none` and `min-width:0`.** iOS ignores
   an author width on `input[type=date]` otherwise, and the date fields spill
   out of the card. `box-sizing:border-box` is already global and is *not* the
