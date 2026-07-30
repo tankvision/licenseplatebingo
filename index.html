@@ -269,6 +269,12 @@ const store={
   get(k){ try{return localStorage.getItem(k)}catch(e){return k in mem?mem[k]:null} },
   set(k,v){ try{localStorage.setItem(k,v)}catch(e){mem[k]=v} }
 };
+/* corrupt or half-written saves must not blank the app — fall back to defaults */
+const readJSON=(k,fb)=>{
+  const raw=store.get(k);
+  if(!raw) return fb;
+  try{ return JSON.parse(raw); }catch(e){ return fb; }
+};
 
 const TIER={
   common:{pts:1,color:'var(--r-common)',dark:'var(--d-common)',label:'Common',emoji:'⬜'},
@@ -329,16 +335,16 @@ const ACH=[
   {id:'start', n:'Getting Started', d:'Any 10 plates',               any:10,                              p:3},
   {id:'half',  n:'Halfway',         d:'Any 26 plates',               any:26,                              p:5},
   {id:'untch', n:'The Untouchables',d:'All seven legendary states',  tier:'legend',                       p:15},
-  {id:'perf',  n:'Perfect Board',   d:'All 51 states and D.C.',      allStates:true,                      p:20}
+  {id:'perf',  n:'Perfect Board',   d:'All 50 states and D.C.',      allStates:true,                      p:20}
 ];
 
 /* claimed: code -> timestamp. Reads the old array format too. */
-const rawC=JSON.parse(store.get('lpb.claimed')||'{}');
+const rawC=readJSON('lpb.claimed',{})||{};
 let claimed=new Map(Array.isArray(rawC)?rawC.map(c=>[c,null]):Object.entries(rawC));
-const rawG=store.get('lpb.groups');
-let enabled=new Set(rawG?JSON.parse(rawG):Object.keys(OPTIONAL));
-const rawO=store.get('lpb.open');
-let opened=new Set(rawO?JSON.parse(rawO):['states']);
+const rawG=readJSON('lpb.groups',null);
+let enabled=new Set(Array.isArray(rawG)?rawG:Object.keys(OPTIONAL));
+const rawO=readJSON('lpb.open',null);
+let opened=new Set(Array.isArray(rawO)?rawO:['states']);
 let sortMode=store.get('lpb.sort')||'az';
 const save=()=>{
   store.set('lpb.claimed',JSON.stringify(Object.fromEntries(claimed)));
