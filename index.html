@@ -225,7 +225,44 @@ body.scrolled .hint{max-height:0;opacity:0;margin:0;overflow:hidden;padding:0}
 
 body.nomotion *{transition:none !important;animation:none !important}
 @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+
+/* ── group play ── */
+.game{margin:0 var(--pad) 2px;font-family:var(--sign)}
+.gamecard{background:var(--dusk);border:1px solid var(--edge);border-radius:11px;padding:14px}
+.gamecard h2{margin:0 0 3px;font-family:var(--plate);font-size:13px;font-weight:800;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--sheeting)}
+.gamecard>p{margin:0;font-size:12px;color:var(--mute);line-height:1.45}
+.gamebtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.gbtn{flex:1 1 auto;min-height:42px;padding:0 14px;border-radius:8px;cursor:pointer;
+  font-family:var(--sign);font-size:12.5px;font-weight:700;
+  background:var(--guide);border:1.4px solid var(--guide-lit);color:var(--sheeting)}
+.gbtn.alt{background:none;border-color:var(--edge);color:var(--blank-hi)}
+.gbtn:disabled{opacity:.55;cursor:default}
+.gbtn:focus-visible{outline:2px solid var(--sheeting);outline-offset:2px}
+.gform{display:flex;flex-direction:column;gap:5px;margin-top:12px}
+.gform label{font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.07em;margin-top:5px}
+.gform input{width:100%;min-height:42px;padding:0 10px;border-radius:8px;background:var(--asphalt);
+  border:1.4px solid var(--edge);color:var(--sheeting);font-family:var(--sign);font-size:15px}
+.gform input:focus{outline:none;border-color:var(--guide-lit)}
+.sbrow{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 12px;border-radius:9px;
+  background:var(--asphalt);border-left:3px solid var(--edge);margin-top:6px}
+.sbrow.me{border-left-color:var(--guide-lit)}
+.sbrow .rank{font-family:var(--data);font-size:12px;font-weight:700;color:var(--mute);min-width:16px}
+.sbrow .who{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--sheeting);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbrow .who em{display:block;font-style:normal;font-family:var(--data);font-size:10.5px;
+  font-weight:400;color:var(--mute)}
+.sbrow .sc{flex:none;font-family:var(--data);font-size:15px;font-weight:700;color:var(--r-rare)}
+.sbrow.me .sc{color:var(--guide-lit)}
+.gact{margin-top:11px;font-family:var(--data);font-size:11px;color:var(--mute);line-height:1.65}
+.gact b{color:var(--blank-hi);font-weight:400}
+.gmeta{display:flex;align-items:center;gap:6px;margin-top:11px;font-family:var(--data);
+  font-size:10.5px;color:var(--mute);flex-wrap:wrap}
+.gdot{width:7px;height:7px;border-radius:50%;background:var(--r-legend);flex:none}
+.gdot.on{background:var(--guide-lit)}
+.gpend{color:var(--r-rare)}
 </style>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -257,6 +294,8 @@ body.nomotion *{transition:none !important;animation:none !important}
 </div>
 
 <div class="celebrate" id="celebrate" aria-hidden="true"></div>
+
+<section class="game" id="game"></section>
 
 <section class="groups" id="groups"></section>
 <div class="foot"><button class="reset" id="reset">Start over</button></div>
@@ -346,9 +385,20 @@ let enabled=new Set(Array.isArray(rawG)?rawG:Object.keys(OPTIONAL));
 const rawO=readJSON('lpb.open',null);
 let opened=new Set(Array.isArray(rawO)?rawO:['states']);
 let sortMode=store.get('lpb.sort')||'az';
+
+/* group play — declared here so save() and toggle() can see them */
+let game=readJSON('lpb.game',null);      // {id,name,starts_at,ends_at,ruleset}
+let me=readJSON('lpb.entry',null);       // {id,secret,name,game_id}
+let outbox=readJSON('lpb.outbox',[]);    // spots waiting for a signal
+let board=readJSON('lpb.board',null);    // last scoreboard we managed to fetch
+let synced=new Set(readJSON('lpb.synced',[])||[]);  // codes the server has confirmed
+if(!Array.isArray(outbox)) outbox=[];
+if(game&&!me) game=null;                 // half-written state: fall back to solo
+
 const save=()=>{
   store.set('lpb.claimed',JSON.stringify(Object.fromEntries(claimed)));
-  store.set('lpb.groups',JSON.stringify([...enabled]));
+  /* in a game the ruleset is locked, so leave the solo group choices alone */
+  if(!game) store.set('lpb.groups',JSON.stringify([...enabled]));
   store.set('lpb.open',JSON.stringify([...opened]));
   store.set('lpb.sort',sortMode);
 };
@@ -569,6 +619,7 @@ function showUndo(code){
   el.addEventListener('click',e=>{
     e.stopPropagation();
     claimed.delete(code);
+    queue('del',code);
     celebrate.innerHTML='';
     render(false);
     hideUndo();
@@ -578,9 +629,10 @@ function showUndo(code){
 }
 
 function toggle(code){
-  if(claimed.has(code)){ claimed.delete(code); hideUndo(); render(false); return; }
+  if(claimed.has(code)){ claimed.delete(code); queue('del',code); hideUndo(); render(false); return; }
   const tier=INDEX[code].tier;
   claimed.set(code,Date.now());
+  queue('add',code,INDEX[code].pts);
   renderMap(); renderStats(true); save();
   shout(code);
   showUndo(code);
@@ -644,6 +696,8 @@ document.body.addEventListener('click',e=>{
   if(sb){ e.stopPropagation(); sortMode=sb.dataset.sort; save(); renderLists(); return; }
   const sw=e.target.closest('.sw');
   if(sw){ e.stopPropagation(); const gid=sw.dataset.sw;
+    /* the ruleset is fixed at game creation or nobody's scores compare */
+    if(game){ snack('The ruleset is locked for this game'); return; }
     enabled.has(gid)?enabled.delete(gid):enabled.add(gid);
     if(!enabled.has(gid)) opened.delete(gid);
     render(false); return; }
@@ -659,7 +713,309 @@ document.getElementById('groups').addEventListener('keydown',e=>{
     opened.has(gid)?opened.delete(gid):opened.add(gid); renderLists(); }
 });
 document.getElementById('reset').addEventListener('click',()=>{
-  if(confirm('Clear every plate and start a new game?')){ claimed.clear(); render(false); }
+  if(confirm('Clear every plate and start a new game?')){
+    for(const code of claimed.keys()) queue('del',code);
+    claimed.clear(); render(false);
+  }
+});
+
+/* ══ group play ═══════════════════════════════════════════════════════
+   The local board stays authoritative. Spots go into an outbox and flush
+   when there's a signal — you are guaranteed to be in a dead zone exactly
+   where the 10-pointers live. The scoreboard falls back to cached totals,
+   never to an error.
+
+   Supabase is optional here: every call is plain fetch, and the CDN client
+   is used only for the live push. If it fails to load, polling covers it
+   and solo play is untouched.
+   ═════════════════════════════════════════════════════════════════════ */
+const SB_URL='https://bejgcgrbdrnuvwvcqrvz.supabase.co';
+const SB_KEY='sb_publishable_t64k5eE5QNvOKH-348LLvA_b7ogAGTA';
+const gameEl=document.getElementById('game');
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function rpc(fn,body){
+  const r=await fetch(SB_URL+'/rest/v1/rpc/'+fn,{
+    method:'POST',
+    headers:{apikey:SB_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  const t=await r.text();
+  let j=null; try{ j=t?JSON.parse(t):null; }catch(e){}
+  if(!r.ok){
+    /* the server understood and refused — distinct from "no signal", which throws above */
+    const err=new Error((j&&(j.message||j.details))||('HTTP '+r.status));
+    err.refused=true; throw err;
+  }
+  return j;
+}
+const saveGame=()=>{
+  store.set('lpb.game',game?JSON.stringify(game):'');
+  store.set('lpb.entry',me?JSON.stringify(me):'');
+};
+const saveOutbox=()=>{
+  store.set('lpb.outbox',JSON.stringify(outbox));
+  store.set('lpb.synced',JSON.stringify([...synced]));
+};
+
+/* one pending op per plate — whatever you did last wins */
+function queue(op,code,pts){
+  if(!me) return;
+  outbox=outbox.filter(o=>o.code!==code);
+  outbox.push({op,code,pts:pts||0,ts:Date.now(),tries:0});
+  saveOutbox(); flush();
+}
+
+/* Self-healing: anything the server hasn't confirmed gets queued again.
+   add_spot is idempotent, so re-sending is free. This is what rescues spots
+   made during the lobby, or refused during a blip, without any bookkeeping. */
+function reconcile(){
+  if(!me) return;
+  const pending=new Set(outbox.map(o=>o.code));
+  for(const code of claimed.keys())
+    if(live(code)&&!synced.has(code)&&!pending.has(code)) queue('add',code,INDEX[code].pts);
+  for(const code of synced)
+    if(!claimed.has(code)&&!pending.has(code)) queue('del',code);
+}
+
+let flushing=false;
+async function flush(){
+  if(flushing||!me||!outbox.length||navigator.onLine===false) return;
+  flushing=true;
+  try{
+    while(outbox.length){
+      const o=outbox[0];
+      try{
+        if(o.op==='add'){
+          await rpc('add_spot',{p_entry:me.id,p_secret:me.secret,
+            p_code:o.code,p_pts:o.pts,p_spotted_at:new Date(o.ts).toISOString()});
+          synced.add(o.code);
+        }else{
+          await rpc('remove_spot',{p_entry:me.id,p_secret:me.secret,p_code:o.code});
+          synced.delete(o.code);
+        }
+        outbox.shift();
+      }catch(err){
+        if(err&&err.refused){
+          /* refused for a reason we can't fix by waiting on this item —
+             drop it so it can't block the queue; reconcile() re-queues it
+             later if it still matters (e.g. the game hadn't started yet) */
+          outbox.shift();
+        }else{
+          o.tries=(o.tries||0)+1;          /* no signal: keep it and retry */
+          if(o.tries>=8) outbox.shift(); else throw err;
+        }
+      }
+      saveOutbox();
+    }
+    await syncBonus();
+    await refreshBoard();
+  }catch(e){ /* whatever is left stays queued for the next try */ }
+  finally{ flushing=false; renderGame(); }
+}
+
+let lastBonus=null;
+async function syncBonus(){
+  if(!me) return;
+  const b=totals().bonus;
+  if(b===lastBonus) return;
+  await rpc('set_bonus',{p_entry:me.id,p_secret:me.secret,p_bonus:b});
+  lastBonus=b;
+}
+async function refreshBoard(){
+  if(!game) return;
+  try{
+    const [rows,act]=await Promise.all([
+      rpc('scoreboard',{p_game:game.id}),
+      rpc('recent_activity',{p_game:game.id,p_limit:6})
+    ]);
+    board={rows:rows||[],act:act||[],at:Date.now()};
+    store.set('lpb.board',JSON.stringify(board));
+  }catch(e){ /* offline: keep showing the last board we saw */ }
+  renderGame();
+}
+async function getGame(id){
+  const r=await fetch(SB_URL+'/rest/v1/games?select=*&id=eq.'+encodeURIComponent(id),{headers:{apikey:SB_KEY}});
+  const j=await r.json();
+  return Array.isArray(j)&&j[0]?j[0]:null;
+}
+
+let channel=null;
+function subscribe(){
+  if(!game||channel||!window.supabase) return;
+  try{
+    const c=window.supabase.createClient(SB_URL,SB_KEY);
+    channel=c.channel('pg-'+game.id);
+    for(const table of ['spots','entries'])
+      channel.on('postgres_changes',
+        {event:'*',schema:'public',table,filter:'game_id=eq.'+game.id},
+        ()=>refreshBoard());
+    channel.subscribe();
+  }catch(e){ channel=null; }   /* polling still covers us */
+}
+
+/* ── rendering ── */
+const fmtAgo=ts=>{
+  const s=Math.max(0,(Date.now()-new Date(ts).getTime())/1000);
+  if(s<60) return 'just now';
+  if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400) return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
+};
+const day=d=>new Date(d).toLocaleDateString([],{month:'short',day:'numeric'});
+const phase=()=>{
+  if(!game) return 'none';
+  const n=Date.now();
+  if(n<new Date(game.starts_at).getTime()) return 'lobby';
+  if(n>new Date(game.ends_at).getTime())   return 'over';
+  return 'live';
+};
+const inviteURL=()=>location.origin+location.pathname+'?g='+game.id;
+const card=(h,p,body)=>`<div class="gamecard"><h2>${h}</h2><p>${p}</p>${body||''}</div>`;
+
+function boardHTML(){
+  const rows=(board&&board.rows)||[];
+  if(!rows.length) return `<div class="gact">Nobody has spotted anything yet.</div>`;
+  return rows.map((r,i)=>`<div class="sbrow${me&&r.entry_id===me.id?' me':''}">
+      <span class="rank">${i+1}</span>
+      <span class="who">${esc(r.name)}<em>${r.found} plate${r.found===1?'':'s'}</em></span>
+      <span class="sc">${r.score}</span>
+    </div>`).join('');
+}
+function actHTML(){
+  const a=(board&&board.act)||[];
+  if(!a.length) return '';
+  return `<div class="gact">`+a.map(x=>
+    `<b>${esc(x.name)}</b> spotted ${esc((INDEX[x.code]&&INDEX[x.code].name)||x.code)} · ${fmtAgo(x.spotted_at)}`
+  ).join('<br>')+`</div>`;
+}
+function metaHTML(){
+  const on=navigator.onLine!==false;
+  return `<div class="gmeta"><span class="gdot${on?' on':''}"></span>${on?'Live':'Offline'}`
+    +(outbox.length?`<span class="gpend">· ${outbox.length} waiting to sync</span>`:'')
+    +(board&&board.at?` · updated ${fmtAgo(board.at)}`:'')+`</div>`;
+}
+function renderGame(){
+  const p=phase();
+  if(p==='none'){
+    const inv=new URLSearchParams(location.search).get('g');
+    gameEl.innerHTML=inv
+      ? card('You’re invited','Pick a name for yourself or your team and you’re in.',
+          `<div class="gform"><label for="jn">Name</label>
+             <input id="jn" maxlength="40" placeholder="The Back Seat"></div>
+           <div class="gamebtns"><button class="gbtn" id="doJoin">Join game</button>
+             <button class="gbtn alt" id="noJoin">Not now</button></div>`)
+      : card('Group play','Everyone keeps their own board. The scoreboard shows totals only.',
+          `<div class="gamebtns"><button class="gbtn" id="newGame">Start a game</button></div>`);
+    return;
+  }
+  const btns=`<div class="gamebtns">
+      <button class="gbtn" id="invite">Share invite link</button>
+      <button class="gbtn alt" id="leave">Leave</button></div>`;
+  if(p==='lobby')
+    gameEl.innerHTML=card(esc(game.name),`Starts ${day(game.starts_at)}. Share the link so everyone can join first.`,
+      boardHTML()+btns+metaHTML());
+  else if(p==='over')
+    gameEl.innerHTML=card(esc(game.name)+' · final',`Ended ${day(game.ends_at)}. Boards are frozen.`,
+      boardHTML()+actHTML()+`<div class="gamebtns"><button class="gbtn alt" id="leave">Leave game</button></div>`);
+  else
+    gameEl.innerHTML=card(esc(game.name),`Ends ${day(game.ends_at)}.`,
+      boardHTML()+actHTML()+btns+metaHTML());
+}
+function createForm(){
+  const d=x=>new Date(x).toISOString().slice(0,10);
+  gameEl.innerHTML=card('Start a game',
+    'Whichever optional groups are switched on now become the ruleset for everyone, so the scores compare.',
+    `<div class="gform">
+       <label for="gn">Game name</label><input id="gn" maxlength="60" placeholder="Summer road trip">
+       <label for="gs">Starts</label><input id="gs" type="date" value="${d(Date.now())}">
+       <label for="ge">Ends</label><input id="ge" type="date" value="${d(Date.now()+7*864e5)}">
+       <label for="gp">Your name (or your team’s)</label><input id="gp" maxlength="40" placeholder="The Back Seat">
+     </div>
+     <div class="gamebtns"><button class="gbtn" id="doCreate">Create</button>
+       <button class="gbtn alt" id="cancelCreate">Cancel</button></div>`);
+}
+
+/* ── actions ── */
+function applyRuleset(){
+  enabled=new Set(game.ruleset||[]);
+  for(const gid of Object.keys(OPTIONAL)) if(!enabled.has(gid)) opened.delete(gid);
+}
+async function doCreate(btn){
+  const name=document.getElementById('gn').value.trim();
+  const who=document.getElementById('gp').value.trim();
+  const s=document.getElementById('gs').value, en=document.getElementById('ge').value;
+  if(!name) return snack('Give the game a name');
+  if(!who)  return snack('Add your name');
+  if(!s||!en||en<s) return snack('The end date has to be after the start');
+  btn.disabled=true; btn.textContent='Creating…';
+  const starts=new Date(s+'T00:00:00').toISOString(), ends=new Date(en+'T23:59:59').toISOString();
+  try{
+    const r=await rpc('create_game',{p_name:name,p_starts_at:starts,p_ends_at:ends,
+      p_ruleset:[...enabled],p_entry_name:who});
+    game={id:r.game_id,name,starts_at:starts,ends_at:ends,ruleset:[...enabled]};
+    me={id:r.entry_id,secret:r.secret,name:r.name,game_id:r.game_id};
+    saveGame(); joinedGame(); snack('Game created');
+  }catch(err){ btn.disabled=false; btn.textContent='Create'; snack(err.message||'Could not create the game'); }
+}
+async function doJoin(btn){
+  const gid=new URLSearchParams(location.search).get('g');
+  const who=document.getElementById('jn').value.trim();
+  if(!who) return snack('Add your name');
+  btn.disabled=true; btn.textContent='Joining…';
+  try{
+    const g=await getGame(gid);
+    if(!g) throw new Error('That invite link is not valid');
+    const r=await rpc('join_game',{p_game:gid,p_entry_name:who});
+    game={id:g.id,name:g.name,starts_at:g.starts_at,ends_at:g.ends_at,ruleset:g.ruleset||[]};
+    me={id:r.entry_id,secret:r.secret,name:r.name,game_id:gid};
+    saveGame(); joinedGame(); snack('You’re in');
+    history.replaceState({},'',location.pathname);
+  }catch(err){ btn.disabled=false; btn.textContent='Join game'; snack(err.message||'Could not join'); }
+}
+/* on create/join: whatever is already on this board counts, so send it up */
+function joinedGame(){
+  applyRuleset();
+  synced=new Set();
+  reconcile();
+  render(false); subscribe(); flush(); refreshBoard();
+}
+function leaveGame(){
+  if(!confirm('Leave this game? Your own board stays exactly as it is.')) return;
+  if(channel){ try{ channel.unsubscribe(); }catch(e){} channel=null; }
+  game=null; me=null; board=null; outbox=[]; synced=new Set(); lastBonus=null;
+  store.set('lpb.board',''); saveOutbox(); saveGame();
+  enabled=new Set(readJSON('lpb.groups',null)||Object.keys(OPTIONAL));  /* solo choices back */
+  render(false); renderGame();
+}
+async function shareInvite(){
+  const text=`Join my Plate Hunt game “${game.name}”\n${inviteURL()}`;
+  try{
+    if(navigator.share){ await navigator.share({text}); return; }
+    await navigator.clipboard.writeText(text); snack('Invite link copied');
+  }catch(e){ if(e&&e.name!=='AbortError') snack('Could not share'); }
+}
+
+gameEl.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  if(b.id==='newGame')      return createForm();
+  if(b.id==='cancelCreate') return renderGame();
+  if(b.id==='noJoin'){ history.replaceState({},'',location.pathname); return renderGame(); }
+  if(b.id==='invite')       return shareInvite();
+  if(b.id==='leave')        return leaveGame();
+  if(b.id==='doCreate')     return doCreate(b);
+  if(b.id==='doJoin')       return doJoin(b);
+});
+window.addEventListener('online',()=>{ reconcile(); flush(); renderGame(); });
+window.addEventListener('offline',renderGame);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ reconcile(); flush(); refreshBoard(); } });
+/* the heartbeat: covers a dropped socket, a flaky tower that never fires an
+   'online' event, and anything the server refused earlier */
+setInterval(()=>{ if(!document.hidden&&game){ reconcile(); flush(); refreshBoard(); } },60000);
+
+renderGame();
+window.addEventListener('load',()=>{
+  if(game&&me){ applyRuleset(); render(false); subscribe(); reconcile(); flush(); refreshBoard(); }
 });
 
 /* ── iOS install nudge ── */
