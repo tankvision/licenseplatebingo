@@ -18,7 +18,9 @@ the decisions and the reasoning, which the code can't tell you.
   context for nothing. Search for named landmarks instead: `store` / `readJSON`
   (persistence), `TIER`, `STATES`, `OPTIONAL`, `INDEX` (data model), `ACH` /
   `achProgress` (achievements), `totals` (scoring), `SHOUT` / `burn`
-  (celebrations), `syncDeck` (sticky header), `buildShare` (share text).
+  (celebrations), `syncDeck` (sticky header), `buildShare` (share text),
+  `SB_URL` / `rpc` / `queue` / `flush` / `reconcile` (group play sync),
+  `renderGame` / `phase` (group play UI).
 
 ## Deploy ritual — the one thing that will bite you
 
@@ -61,9 +63,8 @@ All paths are relative (`./`) so the app works from a repo subpath.
 
 ## Local storage — the whole save file
 
-Five keys, all read through `store` / `readJSON` and written by `save()`. This
-is the entire on-device state, so it's also the exact surface that has to sync
-when the multiplayer layer lands.
+All read through `store` / `readJSON`; the first four are written by `save()`,
+the group-play keys by `saveGame()` / `saveOutbox()`.
 
 | Key | Holds |
 | --- | --- |
@@ -72,6 +73,14 @@ when the multiplayer layer lands.
 | `lpb.open` | Array of expanded section ids. |
 | `lpb.sort` | `'az'` or `'pts'`. Plain string, not JSON. |
 | `lpb.nudged` | `'1'` once the iOS install tip is dismissed. |
+| `lpb.game` | Current game `{id,name,starts_at,ends_at,ruleset}`, or empty. |
+| `lpb.entry` | This device's entry `{id,secret,name,game_id}`. The secret is the only proof of write access — losing it means losing that board. |
+| `lpb.outbox` | Spots waiting for a signal. |
+| `lpb.synced` | Codes the server has confirmed, so `reconcile()` knows what's missing. |
+| `lpb.board` | Last scoreboard fetched, shown when offline. |
+
+`lpb.groups` is **not written while in a game** — the ruleset is locked, and the
+solo choices have to survive so they can be restored on leaving.
 
 `lpb.claimed` **writes** as an object but **reads** either an object or the
 legacy array of bare codes (which loads with null timestamps). Keep both paths.
@@ -112,9 +121,13 @@ mean a blank screen with no way back except clearing site data.
 - Confetti (replaced by the headlight flare — it fits the road vocabulary)
 - `navigator.vibrate()` — unsupported in iOS Safari
 
-## Next up: the multiplayer game layer (Supabase)
+## Group play (built, Supabase)
 
-Not built yet. The agreed spec:
+Live. Project `bejgcgrbdrnuvwvcqrvz`; URL and publishable key are literals near
+`SB_URL` in `index.html`. Schema lives in `supabase/schema.sql` — edit that file
+and re-run it in the dashboard's SQL editor, don't hand-change the database.
+
+**The rules it was built to:**
 
 - **Boards stay separate.** Everyone can spot the same plate independently.
   A "game" is a container that links boards and shows a shared scoreboard.
@@ -130,10 +143,38 @@ Not built yet. The agreed spec:
   4m ago"). It's what makes the scoreboard feel live.
 - Joining is by link. The share text already carries the URL.
 
-Supabase specifics: the anon/publishable key is fine in client code; security
-comes from Row Level Security policies. Never put a service_role key in the app.
-Realtime subscriptions are preferable to polling, but with totals-only scoring,
-polling while the scoreboard is open would also be acceptable.
+**How it actually works, and why:**
+
+- **No accounts.** A game is a random id in a link. Each entry gets a secret on
+  join, held in `lpb.entry`. Anyone with the link can read the game; only the
+  secret-holder can write to that entry's board.
+- **Nothing writes to tables directly.** RLS denies all writes; every mutation
+  is a `security definer` function that checks the secret server-side. That is
+  what makes the secret enforceable rather than decorative. Reads are open,
+  because Realtime can only deliver rows a subscriber may select.
+- **`entry_secrets` is its own table with no read policy.** `entries` has to be
+  world-readable for the live scoreboard, so a secret must never sit on it.
+- **The local board stays authoritative.** Spots go to an outbox and flush when
+  there's a signal; the scoreboard falls back to `lpb.board` rather than an
+  error. You will be in dead zones exactly where the 10-pointers are.
+- **`reconcile()` is the safety net.** It re-queues anything `lpb.synced`
+  doesn't confirm, every 60s. `add_spot` is idempotent, so re-sending is free.
+  This is what rescues spots made during the lobby (the server refuses those)
+  and anything lost to a blip — without any special-case handling.
+- **A refused write is not a failed write.** No-signal retries forever; a server
+  refusal is dropped from the outbox immediately so it cannot block the queue,
+  and `reconcile()` brings it back later if it still matters. An earlier version
+  deadlocked the whole queue on one bad item.
+- **Supabase is optional at runtime.** Every call is plain `fetch`; the CDN
+  client is used only for the live push. If it fails to load, the 60s poll
+  covers it and solo play is untouched. Keep it that way.
+- Entry names come from other people — **escape them** (`esc()`) everywhere.
+- The publishable key belongs in client code. A `service_role` key never does.
+
+**Free tier:** the project pauses after 7 days with no requests. Restore from
+the dashboard, or let the scheduled keep-alive workflow ping it. That workflow
+is unrelated to the Pages source setting above — Pages stays on "Deploy from a
+branch"; do not delete the workflow thinking it caused the old build failures.
 
 ## Known-good behaviors worth not breaking
 
