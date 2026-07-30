@@ -55,15 +55,28 @@ body.scrolled .sign{max-height:0;opacity:0;margin-top:-2px;transform:translateY(
 .tally{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin:11px 2px 10px;transition:margin .3s ease}
 body.scrolled .tally{margin:0 2px 8px}
 .stat{display:flex;align-items:baseline;gap:7px}
-.stat b{font-family:var(--data);font-weight:700;font-size:22px;letter-spacing:-.02em;display:inline-block;
-  transition:font-size .3s ease}
+/* Deliberately NOT transitioned. Animating font-size reflows the sticky deck
+   on every frame for 300ms, which iOS renders as judder. It snaps; the .sign
+   and .prog max-height transitions carry the motion. */
+.stat b{font-family:var(--data);font-weight:700;font-size:22px;letter-spacing:-.02em;display:inline-block}
 .stat span{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
-.stat.pts b{color:var(--guide-lit);font-size:46px;line-height:.9}
+/* Reserve the digits. Without this, 9→10 widens the figure and shoves the
+   spotted count sideways on the tap that scores it — small, but it lands as
+   the whole header twitching. Monospace, so ch units are exact. */
+.stat.pts b{color:var(--guide-lit);font-size:46px;line-height:.9;min-width:3ch}
+.stat:not(.pts) b{min-width:2ch}
 .stat.pts span{color:var(--blank-hi)}
 body.scrolled .stat.pts b{font-size:27px}
 body.scrolled .stat b{font-size:19px}
+/* The pulse is anchored left, not centred: a centred scale makes the digits
+   swell in both directions and reads as the screen wobbling. The hero figure
+   also gets a much gentler scale — 1.2 was tuned when this was 26px type, and
+   at 46px the same multiplier throws the number around. */
+.stat b{transform-origin:left center}
 .stat b.bump{animation:bump .35s cubic-bezier(.25,1.5,.4,1)}
-@keyframes bump{0%{transform:scale(1)}45%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes bump{0%{transform:scale(1)}45%{transform:scale(1.14)}100%{transform:scale(1)}}
+.stat.pts b.bump{animation:bumphero .4s cubic-bezier(.25,1.3,.4,1)}
+@keyframes bumphero{0%{transform:scale(1)}42%{transform:scale(1.07)}100%{transform:scale(1)}}
 .share{margin-left:auto;background:none;border:1.4px solid var(--guide-lit);color:var(--guide-lit);
   font-family:var(--sign);font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
   padding:9px 15px;border-radius:6px;cursor:pointer;transition:.16s ease}
@@ -677,6 +690,9 @@ function toggle(code){
   const tier=INDEX[code].tier;
   claimed.set(code,Date.now());
   queue('add',code,INDEX[code].pts);
+  /* The row collapses and slides out over the next ~740ms, changing the page
+     height on every frame. Let it finish before the deck is allowed to move. */
+  holdDeck(900);
   renderProgress(); renderStats(true); save();
   if(SHOUT[tier].burn) burn();
   shout(code);
@@ -1082,19 +1098,27 @@ function measureDeck(){
   deckShrink=Math.max(0,hExpanded-hCompact);
   deckReady=true;
 }
+/* Hold the deck still for a beat. Used while a field has focus (iOS scrolls the
+   page to reveal the keyboard) and while a spotted row is animating out. */
+var deckHold=null;
+function holdDeck(ms){
+  deckLocked=true;
+  clearTimeout(deckHold);
+  deckHold=setTimeout(()=>{ deckLocked=false; syncDeck(); },ms);
+}
 function syncDeck(){
-  /* A focused field makes iOS scroll the page, which lands us right back in
-     the collapse→shorten→snap→expand loop above — and this time it fights the
-     keyboard. While anything is focused the deck simply holds still. */
   if(deckLocked) return;
   const y=window.scrollY||window.pageYOffset||0;
   const isCompact=document.body.classList.contains('scrolled');
   // page height as it would be with the deck fully expanded
   const fullHeight=document.documentElement.scrollHeight+(isCompact?deckShrink:0);
-  const roomAfterCollapse=fullHeight-deckShrink-window.innerHeight;
-  const canCollapse=roomAfterCollapse>28;
-  if(!isCompact && y>52 && canCollapse) document.body.classList.add('scrolled');
-  else if(isCompact && (y<16 || !canCollapse)) document.body.classList.remove('scrolled');
+  const room=fullHeight-deckShrink-window.innerHeight;
+  /* Hysteresis, and it is not optional. A single threshold makes the deck flip
+     back and forth whenever the page height lands on it — which a row animating
+     out does, every frame, for 320ms. That reads as the screen shaking. It takes
+     real room to collapse; it takes running out of room to expand again. */
+  if(!isCompact && y>52 && room>96) document.body.classList.add('scrolled');
+  else if(isCompact && (y<16 || room<24)) document.body.classList.remove('scrolled');
 }
 (function(){
   let ticking=false;
@@ -1106,13 +1130,13 @@ function syncDeck(){
   const isField=t=>t&&t.tagName&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA');
   document.addEventListener('focusin',e=>{
     if(!isField(e.target)) return;
+    clearTimeout(deckHold);
     deckLocked=true;
     document.body.classList.add('scrolled');   // compact, and pinned that way
   });
   document.addEventListener('focusout',e=>{
     if(!isField(e.target)) return;
-    deckLocked=false;
-    setTimeout(syncDeck,140);                  // after iOS finishes its scroll
+    holdDeck(140);                             // settle after iOS finishes its scroll
   });
   measureDeck(); syncDeck();
 })();
