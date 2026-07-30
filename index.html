@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>License Plate Bingo</title>
+<title>Plate Hunt</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#141A23">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Plate Bingo">
+<meta name="apple-mobile-web-app-title" content="Plate Hunt">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <link rel="icon" href="./icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,18 +38,19 @@ body{padding:0 var(--pad) calc(28px + env(safe-area-inset-bottom));
   background:var(--asphalt);transition:box-shadow .25s ease,background .25s ease}
 body.scrolled .deck{box-shadow:0 10px 24px -8px rgba(0,0,0,.7);background:rgba(20,26,35,.96);
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-/* title collapses away as you scroll */
-.sign{overflow:hidden;transition:max-height .3s ease,opacity .25s ease,margin .3s ease,transform .3s ease;
-  max-height:120px}
-body.scrolled .sign{max-height:0;opacity:0;margin-top:-4px;transform:translateY(-6px);box-shadow:none}
-body.scrolled .sign::after{opacity:0}
+/* Slim wordmark — quiet label, not a billboard */
+.sign{display:flex;align-items:center;gap:9px;overflow:hidden;padding:2px 2px 0;
+  transition:max-height .3s ease,opacity .25s ease,margin .3s ease,transform .3s ease;
+  max-height:34px}
+body.scrolled .sign{max-height:0;opacity:0;margin-top:-2px;transform:translateY(-5px)}
+.sign i{flex:none;width:4px;height:15px;border-radius:2px;background:var(--guide-lit);
+  box-shadow:0 0 8px -1px var(--guide-lit)}
+.sign h1{margin:0;font-family:var(--sign);font-weight:700;font-size:13px;line-height:1;
+  text-transform:uppercase;letter-spacing:.26em;color:var(--blank-hi)}
+.sign .sub{margin:0 0 0 auto;font-family:var(--data);font-size:10px;font-weight:400;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--mute);line-height:1}
 
-.sign{background:var(--guide);border-radius:10px;padding:14px 16px;position:relative;box-shadow:0 6px 22px rgba(0,0,0,.45)}
-.sign::after{content:"";position:absolute;inset:5px;border:2px solid rgba(244,246,241,.85);border-radius:6px;pointer-events:none}
-.sign h1{margin:0;font-weight:700;font-size:clamp(19px,5.2vw,26px);line-height:1.1;text-transform:uppercase;letter-spacing:.01em}
-.sign .sub{margin:5px 0 0;font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:rgba(244,246,241,.7)}
-
-.tally{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 2px 10px;transition:margin .3s ease}
+.tally{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:11px 2px 10px;transition:margin .3s ease}
 body.scrolled .tally{margin:0 2px 8px}
 .stat{display:flex;align-items:baseline;gap:7px}
 .stat b{font-family:var(--data);font-weight:700;font-size:26px;letter-spacing:-.02em;display:inline-block}
@@ -62,9 +63,8 @@ body.scrolled .tally{margin:0 2px 8px}
   padding:9px 15px;border-radius:6px;cursor:pointer;transition:.16s ease}
 .share:hover{background:var(--guide);border-color:var(--guide);color:var(--sheeting)}
 .share:focus-visible{outline:2px solid var(--sheeting);outline-offset:2px}
-.bar{height:5px;border-radius:99px;background:var(--edge);overflow:hidden;margin:0 2px 16px;transition:margin .3s ease}
-body.scrolled .bar{margin:0 2px 8px}
-.bar i{display:block;height:100%;width:0;background:var(--guide-lit);transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.tallyspace{height:12px;transition:height .3s ease}
+body.scrolled .tallyspace{height:4px}
 
 /* Map */
 .mapbox{position:relative;overflow:hidden;background:var(--dusk);border:1px solid var(--edge);
@@ -122,6 +122,43 @@ body.scrolled .hint{max-height:0;opacity:0;margin:0;overflow:hidden;padding:0}
 .sectionhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 2px 8px}
 .sectionhead h2{margin:0;font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 .sectionhead span{font-family:var(--data);font-size:11px;color:var(--mute)}
+
+/* Sort toggle */
+.sortbar{display:flex;align-items:center;gap:6px;padding:0 0 10px}
+.sortbar em{font-style:normal;font-family:var(--data);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--mute);margin-right:2px}
+.sortbtn{background:var(--dusk);border:1.4px solid var(--edge);color:var(--mute);border-radius:6px;
+  padding:7px 12px;font-family:var(--sign);font-size:11px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;cursor:pointer;transition:.16s ease}
+.sortbtn[aria-pressed="true"]{background:var(--guide);border-color:var(--guide);color:var(--sheeting)}
+.sortbtn:focus-visible{outline:2px solid var(--sheeting);outline-offset:2px}
+
+/* Undo on the celebration */
+.undo{position:fixed;left:50%;transform:translateX(-50%);z-index:31;
+  background:var(--sheeting);color:var(--ink);border:0;border-radius:8px;
+  font-family:var(--sign);font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  padding:10px 20px;cursor:pointer;box-shadow:0 8px 26px rgba(0,0,0,.7);
+  animation:undoIn .25s ease-out}
+@keyframes undoIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}
+  to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.undo.out{animation:undoOut .25s ease-in forwards}
+@keyframes undoOut{to{opacity:0;transform:translateX(-50%) translateY(8px)}}
+
+/* Achievements */
+.ach{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;background:var(--dusk);
+  border:1.4px solid var(--edge);border-left:5px solid var(--edge);border-radius:8px;padding:10px 14px;
+  color:var(--blank-hi);font-family:var(--sign);font-size:14.5px;font-weight:600;text-align:left}
+.ach .atext{flex:1;min-width:0}
+.ach .atext em{display:block;font-style:normal;font-family:var(--data);font-size:10.5px;font-weight:400;
+  color:var(--mute);letter-spacing:.04em;margin-top:3px}
+.ach .aprog{flex:none;font-family:var(--data);font-size:12px;font-weight:700;color:var(--mute)}
+.ach .apt{flex:none;font-family:var(--data);font-size:12px;font-weight:700;color:var(--r-rare);
+  min-width:30px;text-align:right}
+.ach.got{background:var(--sheeting);color:var(--ink);border-left-color:var(--guide)}
+.ach.got .atext em{color:#6A7280}
+.ach.got .aprog{color:var(--guide)}
+.ach.got .apt{color:var(--guide)}
+.ach.close{border-left-color:var(--r-rare)}
 .list{display:flex;flex-direction:column;gap:6px}
 .row{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;max-height:120px;overflow:hidden;
   background:var(--dusk);border:1.4px solid var(--edge);border-left:5px solid var(--rc);border-radius:8px;
@@ -186,6 +223,7 @@ body.scrolled .hint{max-height:0;opacity:0;margin:0;overflow:hidden;padding:0}
 .nudge button{flex:none;background:none;border:1.4px solid var(--edge);color:var(--mute);border-radius:6px;
   padding:7px 11px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;font-family:var(--sign)}
 
+body.nomotion *{transition:none !important;animation:none !important}
 @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 </style>
 </head>
@@ -193,7 +231,8 @@ body.scrolled .hint{max-height:0;opacity:0;margin:0;overflow:hidden;padding:0}
 
 <div class="deck" id="deck">
   <header class="sign">
-    <h1>License Plate Bingo</h1>
+    <i></i>
+    <h1>Plate Hunt</h1>
     <p class="sub">Spot every state</p>
   </header>
 
@@ -202,7 +241,7 @@ body.scrolled .hint{max-height:0;opacity:0;margin:0;overflow:hidden;padding:0}
     <div class="stat pts"><b id="pts">0</b><span>points</span></div>
     <button class="share" id="share">Share</button>
   </div>
-  <div class="bar"><i id="fill"></i></div>
+  <div class="tallyspace"></div>
 
   <div class="mapbox" id="mapbox">
     <div class="mapframe" id="mapframe">
@@ -214,13 +253,10 @@ body.scrolled .hint{max-height:0;opacity:0;margin:0;overflow:hidden;padding:0}
     </div>
     <div class="maplegend" id="maplegend"></div>
   </div>
-  <p class="hint" id="hint">Dark states are still out there</p>
+  <p class="hint" id="hint">Dark states are unspotted</p>
 </div>
 
 <div class="celebrate" id="celebrate" aria-hidden="true"></div>
-
-<div class="sectionhead"><h2>Still Out There</h2><span id="huntcount"></span></div>
-<div class="list" id="hunt"></div>
 
 <section class="groups" id="groups"></section>
 <div class="foot"><button class="reset" id="reset">Start over</button></div>
@@ -278,16 +314,37 @@ for(const [c,[n,t]] of Object.entries(STATES)) INDEX[c]={name:n,pts:TIER[t].pts,
 for(const [gid,g] of Object.entries(OPTIONAL))
   for(const [c,n,p,t] of g.items) INDEX[c]={name:n,pts:p,tier:t,group:gid};
 
+/* ── achievements ── */
+const ACH=[
+  {id:'ne',    n:'New England',     d:'ME · NH · VT · MA · RI · CT', set:['ME','NH','VT','MA','RI','CT'], p:10},
+  {id:'4c',    n:'Four Corners',    d:'AZ · NM · UT · CO',           set:['AZ','NM','UT','CO'],           p:6},
+  {id:'pac',   n:'Pacific Coast',   d:'CA · OR · WA',                set:['CA','OR','WA'],                p:5},
+  {id:'south', n:'Deep South',      d:'AL · MS · LA · GA · SC',      set:['AL','MS','LA','GA','SC'],      p:6},
+  {id:'empty', n:'The Big Empty',   d:'MT · WY · ND · SD · ID',      set:['MT','WY','ND','SD','ID'],      p:15},
+  {id:'news',  n:'The Four News',   d:'York · Jersey · Mexico · Hampshire', set:['NY','NJ','NM','NH'],    p:5},
+  {id:'twins', n:'Twins',           d:'Both Dakotas, Carolinas, Virginias', set:['ND','SD','NC','SC','VA','WV'], p:8},
+  {id:'river', n:'River Run',       d:'The ten Mississippi River states',
+   set:['MN','WI','IA','IL','MO','KY','TN','AR','MS','LA'], p:10},
+  {id:'c2c',   n:'Coast to Coast',  d:'California · Maine',          set:['CA','ME'],                     p:4},
+  {id:'start', n:'Getting Started', d:'Any 10 plates',               any:10,                              p:3},
+  {id:'half',  n:'Halfway',         d:'Any 26 plates',               any:26,                              p:5},
+  {id:'untch', n:'The Untouchables',d:'All seven legendary states',  tier:'legend',                       p:15},
+  {id:'perf',  n:'Perfect Board',   d:'All 51 states and D.C.',      allStates:true,                      p:20}
+];
+
 /* claimed: code -> timestamp. Reads the old array format too. */
 const rawC=JSON.parse(store.get('lpb.claimed')||'{}');
 let claimed=new Map(Array.isArray(rawC)?rawC.map(c=>[c,null]):Object.entries(rawC));
 const rawG=store.get('lpb.groups');
 let enabled=new Set(rawG?JSON.parse(rawG):Object.keys(OPTIONAL));
-let opened=new Set(JSON.parse(store.get('lpb.open')||'[]'));
+const rawO=store.get('lpb.open');
+let opened=new Set(rawO?JSON.parse(rawO):['states']);
+let sortMode=store.get('lpb.sort')||'az';
 const save=()=>{
   store.set('lpb.claimed',JSON.stringify(Object.fromEntries(claimed)));
   store.set('lpb.groups',JSON.stringify([...enabled]));
   store.set('lpb.open',JSON.stringify([...opened]));
+  store.set('lpb.sort',sortMode);
 };
 const live=c=>INDEX[c]&&(INDEX[c].group==='states'||enabled.has(INDEX[c].group));
 const clock=ts=>ts?new Date(ts).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'';
@@ -320,11 +377,33 @@ const rowHTML=(code,withTime)=>{
     <span class="nm">${i.name}${withTime&&ts?`<em>${clock(ts)}</em>`:''}</span>
     <span class="pt">${i.pts}</span><span class="tick">✓</span></button>`;
 };
-const stateOrder=Object.entries(STATES).map(([c,[n]])=>[c,n])
-  .sort((a,b)=>a[1].localeCompare(b[1])).map(x=>x[0]);
+const byName=(a,b)=>INDEX[a].name.localeCompare(INDEX[b].name);
+const sortStates=codes=>codes.slice().sort((a,b)=>
+  sortMode==='pts' ? (INDEX[b].pts-INDEX[a].pts)||byName(a,b) : byName(a,b));
 
 document.getElementById('groups').innerHTML =
-  Object.entries(OPTIONAL).map(([gid,g])=>`
+  `<div class="grp">
+      <div class="grouphead" role="button" tabindex="0" data-g="states" aria-expanded="true">
+        <span class="chev">▶</span>
+        <span class="gtext"><h2>States &amp; D.C.</h2><p data-count="states"></p></span>
+      </div>
+      <div class="body" data-body="states">
+        <div class="sortbar">
+          <em>Sort</em>
+          <button class="sortbtn" data-sort="az" aria-pressed="false">A–Z</button>
+          <button class="sortbtn" data-sort="pts" aria-pressed="false">Points</button>
+        </div>
+        <div class="list" data-list="states"></div>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="grouphead" role="button" tabindex="0" data-g="ach" aria-expanded="false">
+        <span class="chev">▶</span>
+        <span class="gtext"><h2>Achievements</h2><p data-count="ach"></p></span>
+      </div>
+      <div class="body" data-body="ach"></div>
+    </div>`
+  + Object.entries(OPTIONAL).map(([gid,g])=>`
     <div class="grp">
       <div class="grouphead" role="button" tabindex="0" data-g="${gid}" aria-expanded="false">
         <span class="chev">▶</span>
@@ -348,27 +427,57 @@ function renderMap(){
     if(code==='DC') dcDot.classList.toggle('on',on);
   }
 }
+function achProgress(a){
+  if(a.set) return {got:a.set.filter(c=>claimed.has(c)).length, need:a.set.length};
+  if(a.any){ const n=[...claimed.keys()].filter(live).length; return {got:Math.min(n,a.any), need:a.any}; }
+  if(a.tier){ const s=Object.keys(STATES).filter(c=>STATES[c][1]===a.tier);
+    return {got:s.filter(c=>claimed.has(c)).length, need:s.length}; }
+  const s=Object.keys(STATES);
+  return {got:s.filter(c=>claimed.has(c)).length, need:s.length};
+}
+const achEarned=()=>ACH.filter(a=>{const p=achProgress(a);return p.got>=p.need;});
+
 function totals(){
   let total=51,n=0,score=0;
   for(const gid of enabled) total+=OPTIONAL[gid].items.length;
   for(const c of claimed.keys()) if(live(c)){ n++; score+=INDEX[c].pts; }
-  return {total,n,score};
+  const bonus=achEarned().reduce((a,x)=>a+x.p,0);
+  return {total,n,score:score+bonus,bonus};
 }
 function renderStats(bump){
   const {total,n,score}=totals();
   const f=document.getElementById('found'), p=document.getElementById('pts');
   f.textContent=n; p.textContent=score;
   document.getElementById('total').textContent=total;
-  document.getElementById('fill').style.width=(n/total*100)+'%';
   if(bump) for(const el of [f,p]){ el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
 }
 function renderLists(){
-  const hunt=stateOrder.filter(c=>!claimed.has(c));
-  document.getElementById('hunt').innerHTML = hunt.length
+  /* states */
+  const hunt=sortStates(Object.keys(STATES).filter(c=>!claimed.has(c)));
+  const left=hunt.reduce((a,c)=>a+INDEX[c].pts,0);
+  document.querySelector('[data-list="states"]').innerHTML = hunt.length
     ? hunt.map(c=>rowHTML(c,false)).join('')
     : `<div class="done">Every state. That's the whole country.</div>`;
-  document.getElementById('huntcount').textContent=`${hunt.length} left`;
+  document.querySelector('[data-count="states"]').textContent =
+    hunt.length?`${hunt.length} left · ${left} pts still out there`:'Complete';
+  document.querySelectorAll('.sortbtn').forEach(b=>
+    b.setAttribute('aria-pressed', b.dataset.sort===sortMode));
 
+  /* achievements */
+  const earned=achEarned().length;
+  const bonus=achEarned().reduce((a,x)=>a+x.p,0);
+  document.querySelector('[data-count="ach"]').textContent =
+    `${earned} / ${ACH.length} · ${bonus} bonus pts`;
+  document.querySelector('[data-body="ach"]').innerHTML = ACH.map(a=>{
+    const {got,need}=achProgress(a), done=got>=need;
+    const close=!done&&need-got<=2;
+    return `<div class="ach${done?' got':close?' close':''}">
+      <span class="atext">${a.n}<em>${a.d}</em></span>
+      <span class="aprog">${got}/${need}</span>
+      <span class="apt">${done?'✓':'+'+a.p}</span></div>`;
+  }).join('');
+
+  /* optional groups */
   for(const [gid,g] of Object.entries(OPTIONAL)){
     const rest=g.items.filter(i=>!claimed.has(i[0]));
     const got=g.items.length-rest.length;
@@ -380,6 +489,8 @@ function renderLists(){
       : rest.length ? rest.map(i=>rowHTML(i[0],false)).join('')
       : `<div class="empty">All of them. Nice.</div>`;
   }
+
+  /* spotted */
   const got=[...claimed.keys()].filter(live);
   got.sort((a,b)=>(claimed.get(b)||0)-(claimed.get(a)||0)||INDEX[b].pts-INDEX[a].pts);
   const score=got.reduce((a,c)=>a+INDEX[c].pts,0);
@@ -393,6 +504,7 @@ function renderLists(){
   document.querySelectorAll('.body').forEach(b=>b.classList.toggle('show',opened.has(b.dataset.body)));
   document.querySelectorAll('.grouphead').forEach(h=>h.setAttribute('aria-expanded',opened.has(h.dataset.g)));
   document.querySelectorAll('.sw').forEach(s=>s.setAttribute('aria-checked',enabled.has(s.dataset.sw)));
+  if(deckReady) syncDeck();
 }
 function render(bump){ renderMap(); renderStats(bump); renderLists(); save(); }
 
@@ -432,12 +544,40 @@ function burn(code){
   setTimeout(()=>{ usa.classList.remove('dim'); el.classList.remove('burning'); },1050);
 }
 
+/* ── undo: mis-taps happen in a moving car ── */
+let undoTimer=null;
+function hideUndo(){
+  const el=document.getElementById('undoBtn');
+  if(!el) return;
+  el.classList.add('out');
+  setTimeout(()=>el.remove(),260);
+}
+function showUndo(code){
+  clearTimeout(undoTimer);
+  const old=document.getElementById('undoBtn'); if(old) old.remove();
+  const el=document.createElement('button');
+  el.className='undo'; el.id='undoBtn'; el.type='button';
+  el.textContent='Undo '+code;
+  const r=document.getElementById('mapbox').getBoundingClientRect();
+  el.style.top=Math.max(r.bottom+12,84)+'px';
+  el.addEventListener('click',e=>{
+    e.stopPropagation();
+    claimed.delete(code);
+    celebrate.innerHTML='';
+    render(false);
+    hideUndo();
+  });
+  document.body.appendChild(el);
+  undoTimer=setTimeout(hideUndo,4200);
+}
+
 function toggle(code){
-  if(claimed.has(code)){ claimed.delete(code); render(false); return; }
+  if(claimed.has(code)){ claimed.delete(code); hideUndo(); render(false); return; }
   const tier=INDEX[code].tier;
   claimed.set(code,Date.now());
   renderMap(); renderStats(true); save();
   shout(code);
+  showUndo(code);
 
   if(STATES[code]){
     if(SHOUT[tier].burn) burn(code);
@@ -448,7 +588,7 @@ function toggle(code){
       setTimeout(()=>el.classList.remove('lit'),700);
     }
   }
-  const row=document.querySelector(`#hunt [data-code="${code}"], .body:not([data-body="spotted"]) [data-code="${code}"]`);
+  const row=document.querySelector(`.body:not([data-body="spotted"]) [data-code="${code}"]`);
   if(row){
     row.classList.add('on');
     setTimeout(()=>row.classList.add('leaving'),400);
@@ -466,7 +606,7 @@ function snack(msg){
 function buildShare(){
   const {total,n,score}=totals();
   const pool=Object.keys(INDEX).filter(live);
-  const lines=['🚗 LICENSE PLATE BINGO',`${score} pts · ${n}/${total}`,''];
+  const lines=['🚗 PLATE HUNT',`${score} pts · ${n}/${total}`,''];
   for(const k of ORDER){
     const set=pool.filter(c=>INDEX[c].tier===k);
     if(!set.length) continue;
@@ -474,6 +614,8 @@ function buildShare(){
     const filled=Math.round(got/set.length*10);
     lines.push(TIER[k].emoji.repeat(filled)+'⬛'.repeat(10-filled)+` ${TIER[k].label.toLowerCase()} ${got}/${set.length}`);
   }
+  const earned=achEarned();
+  if(earned.length){ lines.push(''); lines.push('🏅 '+earned.map(a=>a.n).join(' · ')); }
   const left=pool.filter(c=>!claimed.has(c))
     .sort((a,b)=>INDEX[b].pts-INDEX[a].pts).slice(0,6);
   if(left.length){ lines.push(''); lines.push('Still hunting: '+left.join(', ')); }
@@ -492,6 +634,8 @@ document.getElementById('share').addEventListener('click',async()=>{
 
 /* ── events ── */
 document.body.addEventListener('click',e=>{
+  const sb=e.target.closest('.sortbtn');
+  if(sb){ e.stopPropagation(); sortMode=sb.dataset.sort; save(); renderLists(); return; }
   const sw=e.target.closest('.sw');
   if(sw){ e.stopPropagation(); const gid=sw.dataset.sw;
     enabled.has(gid)?enabled.delete(gid):enabled.add(gid);
@@ -525,19 +669,45 @@ document.getElementById('reset').addEventListener('click',()=>{
   setTimeout(()=>document.body.appendChild(el),1400);
 })();
 
-/* ── collapse the deck on scroll, with a dead zone so it doesn't flicker ── */
+/* ── collapse the deck on scroll ──
+   Collapsing shortens the page. If the page is barely scrollable (all sections
+   closed), that shortening snaps you back to the top, which re-expands, which
+   lengthens the page again — an infinite flicker. So we only collapse when
+   there will still be room to stay scrolled afterwards. ── */
+var deckEl=null, deckShrink=0, deckReady=false;
+function measureDeck(){
+  deckEl=deckEl||document.getElementById('deck');
+  if(!deckEl) return;
+  const wasCompact=document.body.classList.contains('scrolled');
+  document.body.classList.add('nomotion');
+  document.body.classList.remove('scrolled');
+  const hExpanded=deckEl.offsetHeight;
+  document.body.classList.add('scrolled');
+  const hCompact=deckEl.offsetHeight;
+  document.body.classList.toggle('scrolled',wasCompact);
+  void deckEl.offsetHeight;
+  document.body.classList.remove('nomotion');
+  deckShrink=Math.max(0,hExpanded-hCompact);
+  deckReady=true;
+}
+function syncDeck(){
+  const y=window.scrollY||window.pageYOffset||0;
+  const isCompact=document.body.classList.contains('scrolled');
+  // page height as it would be with the deck fully expanded
+  const fullHeight=document.documentElement.scrollHeight+(isCompact?deckShrink:0);
+  const roomAfterCollapse=fullHeight-deckShrink-window.innerHeight;
+  const canCollapse=roomAfterCollapse>28;
+  if(!isCompact && y>52 && canCollapse) document.body.classList.add('scrolled');
+  else if(isCompact && (y<16 || !canCollapse)) document.body.classList.remove('scrolled');
+}
 (function(){
-  let compact=false, ticking=false;
-  function apply(){
-    const y=window.scrollY||window.pageYOffset||0;
-    if(!compact && y>52){ compact=true; document.body.classList.add('scrolled'); }
-    else if(compact && y<16){ compact=false; document.body.classList.remove('scrolled'); }
-    ticking=false;
-  }
+  let ticking=false;
   window.addEventListener('scroll',()=>{
-    if(!ticking){ ticking=true; requestAnimationFrame(apply); }
+    if(!ticking){ ticking=true; requestAnimationFrame(()=>{ syncDeck(); ticking=false; }); }
   },{passive:true});
-  apply();
+  window.addEventListener('resize',()=>{ measureDeck(); syncDeck(); });
+  window.addEventListener('load',()=>{ measureDeck(); syncDeck(); });
+  measureDeck(); syncDeck();
 })();
 
 /* ── service worker: register, and auto-reload once when a new one takes over ── */

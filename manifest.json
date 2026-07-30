@@ -1,6 +1,6 @@
 {
-  "name": "License Plate Bingo",
-  "short_name": "Plate Bingo",
+  "name": "Plate Hunt",
+  "short_name": "Plate Hunt",
   "description": "Spot license plates from every US state.",
   "start_url": "./",
   "scope": "./",
