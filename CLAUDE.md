@@ -75,7 +75,21 @@ All paths are relative (`./`) so the app works from a repo subpath.
   fires an **"Achievement unlocked" banner**, deliberately styled unlike the
   plate callout and delayed ~900ms behind it so the two never read as one
   event. `earnedIds` is seeded from the saved board at load, so nothing fires
-  on app start.
+  on app start. The banner shows for **4200ms**, and `unlockCheck()` queues
+  simultaneous unlocks **4700ms** apart — that gap must stay larger than the
+  visible time plus the 340ms out-animation or two banners overlap.
+- **Achievements live in their own `<section id="achv">` after the plate
+  groups**, not inside `#groups`. They used to sit between "States & D.C." and
+  "Territories", so scrolling the hunt list ran you through an unrelated
+  section. The block keeps `.grouphead` / `data-g="ach"` / `.body` /
+  `data-body="ach"` so the `opened` set, the body-level click handler and the
+  `aria-expanded` sync work on it unchanged — only position and styling are
+  new. The banner carries a teaser row of all 13 badges (`data-strip="ach"`),
+  locked ones dimmed. Still collapsible, still closed by default: a
+  destination, not the main event.
+- **The section keydown handler is bound to `document.body`, not `#groups`.**
+  Scoping it to `#groups` silently drops keyboard access to the achievements
+  banner now that it lives outside that element.
 - **Known imbalance, left alone deliberately.** Optional plates average 27 pts
   against a state's 4.2, so one lucky Yukon can out-earn a week of hunting; and
   52% of the achievement bonus hinges on the 7 legendary states (missing
@@ -185,6 +199,16 @@ and re-run it in the dashboard's SQL editor, don't hand-change the database.
   Nothing reads it, so a player mid-game with an old partial ruleset simply
   gets the full board.
 - Scoreboard shows **totals only** — not who found what.
+- **A compact strip inside `.deck` keeps the standings on screen while you
+  hunt.** It is the exact mirror of `.prog`: zero-height at the top of the
+  page, revealed once `body.scrolled` is set, so the deck's height barely
+  changes and the collapse guard has nothing new to fight. Shows leader + you,
+  or you + the runner-up when you're leading. Rendered from the cached
+  `board.rows`, so it survives a dead zone; absent in solo play and on the
+  create/join form. **`setMini()` only re-runs `measureDeck()` when the strip
+  appears or disappears** — `renderGame()` fires on every flush, every board
+  refresh and the 60s heartbeat, and `measureDeck()` forces a synchronous
+  layout.
 - One exception agreed to: a **recent-activity line** ("Ellie spotted Montana ·
   4m ago"). It's what makes the scoreboard feel live.
 - Joining is by link. The share text already carries the URL.
