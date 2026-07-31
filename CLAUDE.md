@@ -301,6 +301,14 @@ branch"; do not delete the workflow thinking it caused the old build failures.
   an author width on `input[type=date]` otherwise, and the date fields spill
   out of the card. `box-sizing:border-box` is already global and is *not* the
   fix here.
+- **No focusable field may drop below `font-size:16px`.** Safari auto-zooms the
+  whole page on focus for anything smaller, then pans and re-pans as the caret
+  moves — which reads as the app stuttering the instant you start typing, and
+  only ever on the group-play form because those are the only `<input>`s in the
+  app. At 15px it did exactly that. This looks like the sticky-deck bug and is
+  not: the deck is already frozen while a field has focus. Do **not** "fix" it
+  with `maximum-scale` or `user-scalable=no` — modern iOS ignores both, and
+  they break pinch-zoom for anyone who relies on it.
 - **localStorage has a try/catch fallback** to an in-memory object, because
   sandboxed preview iframes block it.
 - Fonts are cached by the service worker so a dead zone doesn't strip the
