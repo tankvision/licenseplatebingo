@@ -96,6 +96,23 @@ body.scrolled .tallyspace{height:4px}
   font-family:var(--data);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
 body.scrolled .prog{max-height:0;opacity:0;margin:0;overflow:hidden}
 
+/* Standings that follow you down the page. The exact mirror of .prog — as the
+   score and bar fold away on scroll, this folds in, so the deck's height barely
+   moves and the collapse guard has nothing new to fight. Only rendered when
+   there is a game with a board; solo play never sees it. */
+.mini{max-height:0;opacity:0;overflow:hidden;margin:0 2px;
+  transition:max-height .3s ease,opacity .25s ease,margin .3s ease}
+body.scrolled .mini.on{max-height:34px;opacity:1;margin:0 2px 8px}
+.miniin{display:flex;align-items:center;gap:9px;min-height:30px;padding:0 11px;border-radius:8px;
+  background:var(--dusk);border:1px solid var(--edge);
+  font-family:var(--data);font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden}
+.miniin s{text-decoration:none;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.miniin b{color:var(--sheeting);font-weight:700}
+.miniin u{text-decoration:none;color:var(--r-rare);font-weight:700}
+.miniin .mme u{color:var(--guide-lit)}
+.miniin .mme b{color:var(--guide-lit)}
+.minidiv{flex:none;color:var(--edge)}
+
 /* The callout — fixed layer, always on screen no matter the scroll position */
 .celebrate{position:fixed;left:0;right:0;z-index:30;pointer-events:none;display:flex;justify-content:center}
 .shout{position:absolute;left:50%;top:0;z-index:6;pointer-events:none;text-align:center;
@@ -109,9 +126,12 @@ body.scrolled .prog{max-height:0;opacity:0;margin:0;overflow:hidden}
 .shout .nm{position:relative;font-family:var(--plate);font-weight:900;text-transform:uppercase;
   letter-spacing:-.01em;line-height:1;color:#fff;white-space:nowrap;
   text-shadow:0 0 18px var(--fc),0 4px 22px rgba(0,0,0,.9);animation:shout var(--dur) ease forwards}
-.shout .pt{position:relative;margin-top:6px;font-family:var(--data);font-weight:700;font-size:14px;
-  letter-spacing:.14em;text-transform:uppercase;color:var(--fc);
-  text-shadow:0 2px 10px rgba(0,0,0,.9);animation:shout var(--dur) ease forwards}
+/* The rarity is the whole point of the tier ladder; at 14px under a 46px name
+   it whispered. Letter-spacing tightens as it grows so "+40 · LEGENDARY" still
+   holds one line on a narrow phone. */
+.shout .pt{position:relative;margin-top:9px;font-family:var(--data);font-weight:700;font-size:20px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--fc);white-space:nowrap;
+  text-shadow:0 0 14px var(--fc),0 2px 10px rgba(0,0,0,.9);animation:shout var(--dur) ease forwards}
 @keyframes shout{
   0%{opacity:0;transform:scale(.5)}
   16%{opacity:1;transform:scale(1.07)}
@@ -196,6 +216,21 @@ body.scrolled .prog{max-height:0;opacity:0;margin:0;overflow:hidden}
 .ach.got .apt{color:var(--guide)}
 .ach.close{border-left-color:var(--r-rare)}
 .ach.close .abar i{background:var(--r-rare)}
+/* Achievements live in their own block after the plate groups, not wedged
+   between them — scrolling the hunt list shouldn't run you through an
+   unrelated section. Still collapsible, still closed by default: this is a
+   destination, not the main event. */
+.achv{margin-top:22px;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge);
+  background:linear-gradient(160deg,rgba(44,154,118,.08),transparent 62%)}
+.achv .grouphead{align-items:flex-start;padding:16px 2px 15px}
+.achv .gtext h2{font-family:var(--plate);font-size:15px;font-weight:800;letter-spacing:.06em;
+  color:var(--sheeting)}
+.achv .gtext p{margin-top:5px;font-size:11.5px}
+.achv .chev{margin-top:2px}
+/* the teaser: every badge, locked ones dimmed exactly like the rows below */
+.achstrip{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
+.achstrip i{font-style:normal;font-size:16px;line-height:1;filter:grayscale(1);opacity:.35}
+.achstrip i.got{filter:none;opacity:1;text-shadow:0 0 9px rgba(44,154,118,.7)}
 .achhead{display:flex;align-items:baseline;gap:9px;padding:2px 2px 10px}
 .achhead b{font-family:var(--data);font-size:22px;font-weight:700;color:var(--sheeting);letter-spacing:-.02em}
 .achhead span{font-family:var(--data);font-size:10.5px;letter-spacing:.14em;
@@ -231,8 +266,14 @@ body.scrolled .prog{max-height:0;opacity:0;margin:0;overflow:hidden}
 .groups{margin-top:26px;border-top:1px solid var(--edge)}
 .grp{border-bottom:1px solid var(--edge)}
 .grouphead{display:flex;align-items:center;gap:12px;padding:14px 2px;cursor:pointer}
-.chev{flex:none;width:14px;color:var(--mute);transition:transform .2s ease;font-size:11px}
+/* The chevron is the only signal a section opens at all, so it gets contrast
+   and a real tap target. It was 11px in --mute and effectively invisible. */
+.chev{flex:none;width:26px;height:26px;display:grid;place-items:center;
+  color:var(--sheeting);font-size:19px;line-height:1;
+  transition:transform .2s ease,opacity .15s ease}
 .grouphead[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.grouphead:active .chev{opacity:.5;transform:scale(.86)}
+.grouphead[aria-expanded="true"]:active .chev{transform:rotate(90deg) scale(.86)}
 .gtext{flex:1;min-width:0}
 .gtext h2{margin:0;font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--sheeting)}
 .gtext p{margin:3px 0 0;font-family:var(--data);font-size:11px;color:var(--mute)}
@@ -338,6 +379,8 @@ body.nomotion *{transition:none !important;animation:none !important}
     <div class="progbar"><i id="progfill" style="width:0%"></i></div>
     <div class="proglab"><span id="proglabl">0 of 51 states</span><span id="proglabr">0%</span></div>
   </div>
+
+  <div class="mini" id="mini"></div>
 </div>
 
 <div class="celebrate" id="celebrate" aria-hidden="true"></div>
@@ -345,6 +388,7 @@ body.nomotion *{transition:none !important;animation:none !important}
 <section class="game" id="game"></section>
 
 <section class="groups" id="groups"></section>
+<section class="achv" id="achv"></section>
 <div class="foot"><button class="reset" id="reset">Start over</button></div>
 
 <script>
@@ -483,13 +527,7 @@ document.getElementById('groups').innerHTML =
         <div class="list" data-list="states"></div>
       </div>
     </div>
-    <div class="grp">
-      <div class="grouphead" role="button" tabindex="0" data-g="ach" aria-expanded="false">
-        <span class="chev">▶</span>
-        <span class="gtext"><h2>Achievements</h2><p data-count="ach"></p></span>
-      </div>
-      <div class="body" data-body="ach"></div>
-    </div>`
+    `
   + Object.entries(OPTIONAL).map(([gid,g])=>`
     <div class="grp">
       <div class="grouphead" role="button" tabindex="0" data-g="${gid}" aria-expanded="false">
@@ -505,6 +543,21 @@ document.getElementById('groups').innerHTML =
       </div>
       <div class="body" data-body="spotted"></div>
     </div>`;
+
+/* Its own block, after the plate groups. Deliberately keeps .grouphead /
+   data-g / .body / data-body so the `opened` set, the body-level click
+   handler and the aria-expanded sync all work on it unchanged — only the
+   position and the styling are new. */
+document.getElementById('achv').innerHTML =
+  `<div class="grouphead" role="button" tabindex="0" data-g="ach" aria-expanded="false">
+      <span class="chev">▶</span>
+      <span class="gtext">
+        <h2>🏆 Achievements</h2>
+        <p data-count="ach"></p>
+        <span class="achstrip" data-strip="ach"></span>
+      </span>
+    </div>
+    <div class="body" data-body="ach"></div>`;
 
 /* Progress is states only — see the note by .prog in the stylesheet */
 function renderProgress(){
@@ -536,7 +589,9 @@ function unlockBanner(a){
     <span class="utext"><b>Achievement unlocked</b><span>${a.n}</span></span>
     <span class="upt">+${a.p}</span>`;
   document.body.appendChild(el);
-  setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),340); },2300);
+  /* Long enough to actually read the name in a moving car. If this changes,
+     the queue spacing in unlockCheck() must stay larger than this + 340ms. */
+  setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),340); },4200);
 }
 /* Diff against what was earned before this tap. Delayed past the plate callout
    so the two never land on screen as one event; several at once queue up. */
@@ -544,7 +599,7 @@ function unlockCheck(){
   const now=achEarned();
   const fresh=now.filter(a=>!earnedIds.has(a.id));
   earnedIds=new Set(now.map(a=>a.id));
-  fresh.forEach((a,i)=>setTimeout(()=>unlockBanner(a),900+i*2800));
+  fresh.forEach((a,i)=>setTimeout(()=>unlockBanner(a),900+i*4700));
 }
 
 function totals(){
@@ -577,8 +632,13 @@ function renderLists(){
      for the player who's behind. */
   const earnedList=achEarned();
   const bonus=earnedList.reduce((a,x)=>a+x.p,0);
+  const earnedSet=new Set(earnedList.map(a=>a.id));
   document.querySelector('[data-count="ach"]').textContent =
-    `${earnedList.length} / ${ACH.length} unlocked · ${bonus} bonus pts`;
+    `${earnedList.length} of ${ACH.length} unlocked · +${bonus} pts`;
+  /* the teaser: every badge on the banner, locked ones dimmed the same way
+     the rows below are, so the section is worth opening at a glance */
+  document.querySelector('[data-strip="ach"]').innerHTML =
+    ACH.map(a=>`<i class="${earnedSet.has(a.id)?'got':''}">${a.e}</i>`).join('');
   document.querySelector('[data-body="ach"]').innerHTML =
     `<div class="achhead"><b>${earnedList.length}</b><span>of ${ACH.length} unlocked</span>
        <em>+${bonus} pts</em></div>`
@@ -751,7 +811,9 @@ document.body.addEventListener('click',e=>{
   const row=e.target.closest('.row');
   if(row && !row.disabled) toggle(row.dataset.code);
 });
-document.getElementById('groups').addEventListener('keydown',e=>{
+/* Global, not bound to #groups — the achievements banner lives outside that
+   element now, and scoping this to it silently drops keyboard access to it. */
+document.body.addEventListener('keydown',e=>{
   const head=e.target.closest('.grouphead');
   if(head&&e.target===head&&(e.key==='Enter'||e.key===' ')){
     e.preventDefault(); const gid=head.dataset.g;
@@ -944,8 +1006,39 @@ function metaHTML(){
     +(outbox.length?`<span class="gpend">· ${outbox.length} waiting to sync</span>`:'')
     +(board&&board.at?` · updated ${fmtAgo(board.at)}`:'')+`</div>`;
 }
+/* ── the pinned strip: leader + you ──
+   Built from the same cached board the card uses, so it survives a dead zone.
+   Solo play and the create/join form never render it. */
+const miniEl=document.getElementById('mini');
+let miniOn=false;
+function setMini(html){
+  const on=!!html;
+  miniEl.innerHTML=html;
+  miniEl.classList.toggle('on',on);
+  /* Re-measure only when the deck's compact height actually changes.
+     renderGame() runs on every flush, every board refresh and the 60s
+     heartbeat, and measureDeck() forces a synchronous layout. */
+  if(on!==miniOn){ miniOn=on; if(deckReady){ measureDeck(); syncDeck(); } }
+}
+function renderMini(){
+  const rows=(game&&me&&board&&board.rows)||[];
+  if(!rows.length) return setMini('');
+  const mine=rows.findIndex(r=>r.entry_id===me.id);
+  const parts=[];
+  if(mine===0){
+    /* leading: show the runner-up instead, or there's nothing to measure against */
+    parts.push(`<s class="mme">🏆 <b>You</b> <u>${rows[0].score}</u></s>`);
+    if(rows[1]) parts.push(`<s>${esc(rows[1].name)} <u>${rows[1].score}</u></s>`);
+  }else{
+    parts.push(`<s>🏆 <b>${esc(rows[0].name)}</b> <u>${rows[0].score}</u></s>`);
+    if(mine>0) parts.push(`<s class="mme"><b>You</b> <u>${rows[mine].score}</u> (${mine+1})</s>`);
+  }
+  setMini(`<div class="miniin">${parts.join('<span class="minidiv">·</span>')}</div>`);
+}
+
 function renderGame(){
   const p=phase();
+  renderMini();
   if(p==='none'){
     const inv=new URLSearchParams(location.search).get('g');
     gameEl.innerHTML=inv
