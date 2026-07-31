@@ -329,10 +329,17 @@ body.scrolled .mini.on{max-height:34px;opacity:1;margin:0 2px 8px}
 .gform label{font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.07em;margin-top:5px}
 /* iOS ignores an author width on date inputs unless appearance is cleared —
    that is what made these overflow the card. min-width:0 stops the intrinsic
-   width of the date spinner from pushing the flex column wider. */
-.gform input{width:100%;min-width:0;max-width:100%;min-height:44px;padding:0 10px;border-radius:8px;
+   width of the date spinner from pushing the flex column wider.
+
+   font-size MUST NOT drop below 16px. Safari auto-zooms the whole page when
+   you focus an input smaller than that, then pans and re-pans as the caret
+   moves — which reads as the app stuttering the moment you start typing. It is
+   not the deck and not the keyboard; the deck is already frozen while a field
+   has focus. `maximum-scale` is the wrong fix: modern iOS ignores it and it
+   would kill pinch-zoom for anyone who needs it. */
+.gform input{width:100%;min-width:0;max-width:100%;min-height:46px;padding:0 10px;border-radius:8px;
   background:var(--asphalt);border:1.4px solid var(--edge);color:var(--sheeting);
-  font-family:var(--sign);font-size:15px;text-align:left;
+  font-family:var(--sign);font-size:16px;text-align:left;
   appearance:none;-webkit-appearance:none}
 .gform input[type=date]{display:block;line-height:1.2}
 .gform input:focus{outline:none;border-color:var(--guide-lit)}
