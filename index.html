@@ -1175,10 +1175,18 @@ window.addEventListener('load',()=>{
    closed), that shortening snaps you back to the top, which re-expands, which
    lengthens the page again — an infinite flicker. So we only collapse when
    there will still be room to stay scrolled afterwards. ── */
-var deckEl=null, deckShrink=0, deckReady=false, deckLocked=false;
+var deckEl=null, deckShrink=0, deckReady=false, deckLocked=false, deckDirty=false;
+/* Measuring is violent: it adds `nomotion`, which is `*{animation:none}`, so it
+   kills every running animation on the page — the row sliding out, the score
+   bump, the callout — and it rips `.scrolled` off and back on. Never do that
+   mid-tap. iOS fires `resize` when the URL bar shows or hides, which is exactly
+   when a row animating out changes the content height, so this WILL be called
+   at the worst moment unless it defers. */
 function measureDeck(){
+  if(deckLocked){ deckDirty=true; return; }
   deckEl=deckEl||document.getElementById('deck');
   if(!deckEl) return;
+  deckDirty=false;
   const wasCompact=document.body.classList.contains('scrolled');
   document.body.classList.add('nomotion');
   document.body.classList.remove('scrolled');
@@ -1197,7 +1205,11 @@ var deckHold=null;
 function holdDeck(ms){
   deckLocked=true;
   clearTimeout(deckHold);
-  deckHold=setTimeout(()=>{ deckLocked=false; syncDeck(); },ms);
+  deckHold=setTimeout(()=>{
+    deckLocked=false;
+    if(deckDirty) measureDeck();   // whatever we deferred, catch up now
+    syncDeck();
+  },ms);
 }
 function syncDeck(){
   if(deckLocked) return;
@@ -1218,7 +1230,14 @@ function syncDeck(){
   window.addEventListener('scroll',()=>{
     if(!ticking){ ticking=true; requestAnimationFrame(()=>{ syncDeck(); ticking=false; }); }
   },{passive:true});
-  window.addEventListener('resize',()=>{ measureDeck(); syncDeck(); });
+  /* Debounced: iOS fires resize repeatedly as the URL bar slides, and each
+     measure costs two forced layouts plus a whole-document style invalidation.
+     Running that on every event is its own source of judder. */
+  let rz=null;
+  window.addEventListener('resize',()=>{
+    clearTimeout(rz);
+    rz=setTimeout(()=>{ measureDeck(); syncDeck(); },160);
+  });
   window.addEventListener('load',()=>{ measureDeck(); syncDeck(); });
   const isField=t=>t&&t.tagName&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA');
   document.addEventListener('focusin',e=>{
