@@ -302,7 +302,14 @@ body.scrolled .mini.on{max-height:34px;opacity:1;margin:0 2px 8px}
 .nudge button{flex:none;background:none;border:1.4px solid var(--edge);color:var(--mute);border-radius:6px;
   padding:7px 11px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;font-family:var(--sign)}
 
-body.nomotion *{transition:none !important;animation:none !important}
+/* Scoped to the deck, and it must stay that way. measureDeck() toggles this to
+   read settled heights instead of mid-transition ones. As `body.nomotion *` it
+   hit every element on the page, and killing an animation then un-killing it
+   RESTARTS it from frame zero — so the row sliding out, the callout, the undo
+   button and the unlock banner all snapped and replayed at once. That is what
+   "the whole page shakes" was. Every `body.scrolled` rule targets something
+   inside .deck, so the deck is all this ever needed to cover. */
+.deck.nomotion, .deck.nomotion *{transition:none !important;animation:none !important}
 @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 
 /* ── group play ── */
@@ -1188,14 +1195,14 @@ function measureDeck(){
   if(!deckEl) return;
   deckDirty=false;
   const wasCompact=document.body.classList.contains('scrolled');
-  document.body.classList.add('nomotion');
+  deckEl.classList.add('nomotion');
   document.body.classList.remove('scrolled');
   const hExpanded=deckEl.offsetHeight;
   document.body.classList.add('scrolled');
   const hCompact=deckEl.offsetHeight;
   document.body.classList.toggle('scrolled',wasCompact);
   void deckEl.offsetHeight;
-  document.body.classList.remove('nomotion');
+  deckEl.classList.remove('nomotion');
   deckShrink=Math.max(0,hExpanded-hCompact);
   deckReady=true;
 }
@@ -1230,13 +1237,17 @@ function syncDeck(){
   window.addEventListener('scroll',()=>{
     if(!ticking){ ticking=true; requestAnimationFrame(()=>{ syncDeck(); ticking=false; }); }
   },{passive:true});
-  /* Debounced: iOS fires resize repeatedly as the URL bar slides, and each
-     measure costs two forced layouts plus a whole-document style invalidation.
-     Running that on every event is its own source of judder. */
-  let rz=null;
+  /* iOS fires resize constantly as the URL bar slides — height changes, width
+     does not. The deck's shrink only depends on width (it decides how the text
+     wraps), so a height-only resize must never trigger a re-measure. This is
+     what was calling measureDeck() in the middle of a tap. */
+  let rz=null, lastW=window.innerWidth;
   window.addEventListener('resize',()=>{
     clearTimeout(rz);
-    rz=setTimeout(()=>{ measureDeck(); syncDeck(); },160);
+    rz=setTimeout(()=>{
+      if(window.innerWidth!==lastW){ lastW=window.innerWidth; measureDeck(); }
+      syncDeck();
+    },160);
   });
   window.addEventListener('load',()=>{ measureDeck(); syncDeck(); });
   const isField=t=>t&&t.tagName&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA');
