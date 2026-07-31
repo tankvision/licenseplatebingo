@@ -261,6 +261,17 @@ branch"; do not delete the workflow thinking it caused the old build failures.
 - **`holdDeck(ms)` freezes the deck through anything that animates the page
   height** — a spotted row leaving (900ms), a field losing focus (140ms).
   Cheaper and more honest than trying to make `syncDeck()` correct mid-flight.
+- **`measureDeck()` respects that lock too, and this is not optional.** It adds
+  `nomotion`, which is `*{animation:none !important}`, so it kills every running
+  animation on the page — the row sliding out, the score bump, the callout —
+  and it rips `.scrolled` off and back on. iOS fires `resize` whenever the URL
+  bar slides, which happens exactly when a row animating out changes the
+  content height, so it *will* be called at the worst possible moment. While
+  locked it sets `deckDirty` and returns; the hold's expiry catches up. Guarding
+  only `syncDeck()` and not this one is what brought the shake back once.
+- **The resize handler is debounced (160ms).** Each measure costs two forced
+  layouts and a whole-document style invalidation; running that per event while
+  the URL bar slides is its own judder.
 - **Never animate layout properties inside the deck.** It is `position:sticky`,
   so a transitioning `font-size` reflows it every frame for 300ms and iOS
   renders that as judder. The score figure snaps between sizes on purpose.
