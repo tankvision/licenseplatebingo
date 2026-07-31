@@ -269,9 +269,19 @@ branch"; do not delete the workflow thinking it caused the old build failures.
   content height, so it *will* be called at the worst possible moment. While
   locked it sets `deckDirty` and returns; the hold's expiry catches up. Guarding
   only `syncDeck()` and not this one is what brought the shake back once.
-- **The resize handler is debounced (160ms).** Each measure costs two forced
-  layouts and a whole-document style invalidation; running that per event while
-  the URL bar slides is its own judder.
+- **`nomotion` is scoped to `.deck`, and must stay that way.** It was
+  `body.nomotion *`, i.e. `animation:none !important` on every element in the
+  document. Killing an animation and then un-killing it **restarts it from
+  frame zero**, so every `measureDeck()` call snapped and replayed the row
+  sliding out, the callout, the undo button and the unlock banner
+  simultaneously — the "whole page shakes for a split second" bug. Every
+  `body.scrolled` rule targets something inside `.deck`, so the deck is all it
+  ever needed to cover.
+- **A height-only resize must never re-measure.** iOS fires `resize` constantly
+  as the URL bar slides — height changes, width doesn't — and that was what
+  called `measureDeck()` mid-tap. The handler is debounced 160ms and only
+  re-measures when `window.innerWidth` actually changed; the deck's shrink
+  depends on width alone, because width is what decides how the text wraps.
 - **Never animate layout properties inside the deck.** It is `position:sticky`,
   so a transitioning `font-size` reflows it every frame for 300ms and iOS
   renders that as judder. The score figure snaps between sizes on purpose.
