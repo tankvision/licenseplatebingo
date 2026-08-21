@@ -81,6 +81,21 @@ begin
   end if;
 end $$;
 
+-- How long after a game ends we still accept a spot that was MADE inside
+-- the window. You are in a dead zone exactly where the 10-pointers are, and
+-- a plate found at 11:58pm must not die because signal came back at 12:05.
+--
+-- Deliberately short: the standings settle the same night and stay settled.
+-- Longer windows (48h, 12h, 6h) were considered and rejected -- a scoreboard
+-- that can shuffle the next day is worse than a few lost plates. The cost is
+-- real and accepted: the app only flushes while it is open, so a phone closed
+-- overnight in a dead zone loses its last spots for good. The client owns up
+-- to that with a "missed the deadline" notice rather than hiding it.
+create or replace function game_grace()
+returns interval language sql immutable as $
+  select interval '1 hour';
+$;
+
 -- ── write API ──────────────────────────────────────────────────────────
 
 create or replace function join_game(p_game text, p_entry_name text)
@@ -148,7 +163,7 @@ create or replace function add_spot(
   p_spotted_at timestamptz default now()
 ) returns void
 language plpgsql security definer set search_path = public, pg_temp as $$
-declare g games%rowtype; v_game text; v_code text;
+declare g games%rowtype; v_game text; v_code text; v_when timestamptz;
 begin
   perform entry_auth(p_entry, p_secret);
 
@@ -158,12 +173,37 @@ begin
 
   select game_id into v_game from entries where id = p_entry;
   select * into g from games where id = v_game;
+
+  -- The spot's own time, clamped so a phone clock running fast cannot invent
+  -- a future. A genuine spot is always in the past, so this leaves it alone;
+  -- it only ever pulls an impossible timestamp back to now. Without it a spot
+  -- claiming next year sits at the top of recent_activity permanently, because
+  -- nothing real can ever outrank a fake future -- and both that line and the
+  -- scoreboard drill-in sort on this column.
+  --
+  -- What it does NOT do is rescue a skewed clock at the deadline: least() only
+  -- lowers the value toward now(), and the end check below runs only when
+  -- now() is already past ends_at, so the clamped value is past it too.
+  -- Acceptance is unchanged in every case; this is about stored sanity only.
+  -- Computed here so the check and the stored row use one value.
+  v_when := least(coalesce(p_spotted_at, now()), now());
+
+  -- The start check stays ARRIVAL-based on purpose: a spot made during the
+  -- lobby is refused now and rescued by reconcile() once the game starts.
+  -- Judging it by its own timestamp would refuse it forever and kill that.
   if now() < g.starts_at then raise exception 'game has not started'; end if;
-  if now() > g.ends_at   then raise exception 'game has ended'; end if;
+
+  -- The end check is timestamp-aware. Nothing changes while the game is live;
+  -- once it ends we still take a spot that was MADE inside the window, until
+  -- the grace runs out.
+  if now() > g.ends_at then
+    if now() > g.ends_at + game_grace() then raise exception 'game has ended'; end if;
+    if v_when > g.ends_at               then raise exception 'game has ended'; end if;
+  end if;
 
   -- do nothing on conflict: an offline outbox may re-send the same spot
   insert into spots(entry_id, game_id, code, pts, spotted_at)
-  values (p_entry, v_game, v_code, p_pts, coalesce(p_spotted_at, now()))
+  values (p_entry, v_game, v_code, p_pts, v_when)
   on conflict (entry_id, code) do nothing;
 end $$;
 
@@ -175,7 +215,8 @@ begin
   perform entry_auth(p_entry, p_secret);
   select game_id into v_game from entries where id = p_entry;
   select * into g from games where id = v_game;
-  if now() > g.ends_at then raise exception 'game has ended'; end if;
+  -- same grace as add_spot: removing only ever lowers your own score
+  if now() > g.ends_at + game_grace() then raise exception 'game has ended'; end if;
 
   delete from spots
   where entry_id = p_entry and code = upper(btrim(coalesce(p_code,'')));
@@ -192,7 +233,8 @@ begin
   end if;
   select game_id into v_game from entries where id = p_entry;
   select * into g from games where id = v_game;
-  if now() > g.ends_at then raise exception 'game has ended'; end if;
+  -- same grace: a late spot can be the one that unlocks an achievement
+  if now() > g.ends_at + game_grace() then raise exception 'game has ended'; end if;
 
   update entries set bonus = p_bonus where id = p_entry;
 end $$;
@@ -226,6 +268,18 @@ language sql stable security definer set search_path = public, pg_temp as $$
   limit least(greatest(coalesce(p_limit, 10), 1), 50);
 $$;
 
+-- One player's plates, for the scoreboard drill-in. `spots` is already
+-- world-readable, so this exposes nothing new -- it just gives the client a
+-- call shaped like the two above instead of a raw table select.
+create or replace function entry_spots(p_entry uuid)
+returns table(code text, pts int, spotted_at timestamptz)
+language sql stable security definer set search_path = public, pg_temp as $
+  select s.code, s.pts, s.spotted_at
+  from spots s
+  where s.entry_id = p_entry
+  order by s.spotted_at desc;
+$;
+
 -- ── access rules ───────────────────────────────────────────────────────
 
 alter table games         enable row level security;
@@ -252,6 +306,7 @@ grant select on games, entries, spots to anon, authenticated;
 
 revoke execute on function entry_auth(uuid, text) from public, anon, authenticated;
 revoke execute on function rand_hex()             from public, anon, authenticated;
+revoke execute on function game_grace()           from public, anon, authenticated;
 
 grant execute on function create_game(text, timestamptz, timestamptz, jsonb, text) to anon, authenticated;
 grant execute on function join_game(text, text)                                    to anon, authenticated;
@@ -260,6 +315,7 @@ grant execute on function remove_spot(uuid, text, text)                         
 grant execute on function set_bonus(uuid, text, int)                               to anon, authenticated;
 grant execute on function scoreboard(text)                                         to anon, authenticated;
 grant execute on function recent_activity(text, int)                               to anon, authenticated;
+grant execute on function entry_spots(uuid)                                        to anon, authenticated;
 
 -- ── realtime ───────────────────────────────────────────────────────────
 -- Broadcast spot and entry changes so the scoreboard updates live.
