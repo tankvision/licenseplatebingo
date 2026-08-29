@@ -1,10 +1,32 @@
 name: Keep Supabase awake
 
-# Free Supabase projects pause after 7 days with no requests. A paused project
-# means the shared scoreboard is dead until someone restores it by hand from the
-# dashboard — which you will discover at the worst possible moment, i.e. at the
-# start of a road trip. This runs a real query often enough that the timer never
-# gets close.
+# THIS IS AN ALARM, NOT A PREVENTATIVE. Read this before trusting it.
+#
+# It was written believing that querying the database often enough would keep
+# the free-tier pause timer from filling up. That belief is wrong, and there is
+# direct evidence: this workflow returned a clean HTTP 200 on 2026-08-25 and the
+# project was paused by 2026-08-28 — three days later, against a seven-day
+# window. The pings were landing. They simply did not count as "activity".
+#
+# In hindsight that is the obvious outcome. Supabase has every incentive not to
+# let a trivial automated read reset the timer, or the pause policy would do
+# nothing at all. Do not "fix" this by pinging more often; the cadence was never
+# the problem. Switching it to a write might register where a read doesn't, but
+# that is a guess at a rule they have good reason to keep opaque and to tighten,
+# and the failure mode is discovering it didn't work at the start of a trip.
+#
+# What this workflow IS good for: it fails loudly and emails the repo owner
+# within three days of the database going to sleep. That early warning is the
+# whole remaining value, and it worked. Keep it for that.
+#
+# The actual fix is to restore the project from the dashboard before a trip, the
+# way you would charge a battery. Only the paid tier stops the pausing.
+#
+# ⚠ A paused project cannot be restored after 90 days. The data stays
+# downloadable, but the project is gone. If that ever happens: create a fresh
+# project, paste supabase/schema.sql into the SQL editor, and update SB_URL and
+# SB_KEY in index.html. That is exactly why the schema lives in the repo as a
+# file rather than only inside the database.
 #
 # THIS IS UNRELATED TO GITHUB PAGES. Pages stays on "Deploy from a branch";
 # CLAUDE.md's warning against the Actions *source* is about that setting, not
