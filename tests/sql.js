@@ -21,6 +21,7 @@
 const fs=require('fs'), path=require('path');
 const ROOT=path.join(__dirname,'..');
 const SCHEMA=process.argv[2]||path.join(ROOT,'supabase','schema.sql');
+const VERIFY=process.argv[3]||path.join(ROOT,'supabase','verify.sql');
 let bad=0, checks=0;
 const fail=(...a)=>{console.log('  FAIL ',...a);bad++;};
 const ok=m=>{console.log('  ok    '+m);checks++;};
@@ -87,7 +88,7 @@ const need=[
 for(const [re,msg] of need){ if(!re.test(NC)) fail('missing: '+msg); else ok(msg); }
 
 /* ── verify.sql ──────────────────────────────────────────────────────── */
-const V=fs.readFileSync(path.join(ROOT,'supabase','verify.sql'),'utf8');
+const V=fs.readFileSync(VERIFY,'utf8');
 const vtags=(V.match(/\$v\$/g)||[]).length;
 if(vtags!==2) fail(`verify.sql has ${vtags} "$v$" tags, expected 2`);
 else ok('verify.sql DO block is balanced');
@@ -99,11 +100,26 @@ else if(!/^rollback;/m.test(V)) fail('verify.sql never rolls back — it would l
 else ok('verify.sql is wrapped in begin/rollback');
 
 /* and it must not touch anything it did not create */
+const VC=V.replace(/^\s*--.*$/gm,'');
 for(const kw of ['drop ','truncate ','alter table']){
-  if(new RegExp('^\\s*'+kw,'im').test(V)) fail(`verify.sql contains "${kw.trim()}" — it must only create and roll back`);
+  if(new RegExp('^\\s*'+kw,'im').test(VC)) fail(`verify.sql contains "${kw.trim()}" — it must only create and roll back`);
 }
-if(/delete\s+from/i.test(V.replace(/^\s*--.*$/gm,''))) fail('verify.sql deletes directly — it should only go through the app functions');
-else ok('verify.sql never deletes or alters directly');
+if(/delete\s+from/i.test(VC)) fail('verify.sql deletes directly — it should only go through the app functions');
+else ok('verify.sql never deletes, drops or alters');
+
+/* One direct write is allowed and necessary: an already-ended game cannot be
+   created (create_game calls join_game, which refuses a finished game), so the
+   end-of-game paths are only reachable by creating a live game and moving its
+   deadline backwards. That update must be narrow — this column, on a game the
+   script made — or it stops being a test and becomes a liability. */
+const updates=[...VC.matchAll(/^\s*update\s+.*$/gim)].map(m=>m[0].trim());
+let aging=0;
+for(const u of updates){
+  if(/^update games set ends_at = now\(\) [-+] interval '[^']+' where id = g_\w+;$/.test(u)) aging++;
+  else fail('unexpected direct write in verify.sql: '+u);
+}
+if(updates.length&&aging===updates.length)
+  ok(`${aging} deadline-aging update(s), each scoped to one game this script created`);
 
 console.log(bad?`\n${bad} problem(s)\n`:`\n${checks} checks passed\n`);
 process.exit(bad?1:0);
