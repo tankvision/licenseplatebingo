@@ -25,7 +25,7 @@ if(sw.status){ console.log(sw.stderr); bad++; }
 
 /* dom.js must run before negtest.js: negtest asserts dom.js REJECTS mutated
    copies, which proves nothing if dom.js is broken on the real file */
-for(const name of ['sync3','freeze','panel','dom','negtest']){
+for(const name of ['sync3','freeze','panel','dom','sql','negtest']){
   const r=cp.spawnSync(process.execPath,[path.join(__dirname,name+'.js')],{encoding:'utf8'});
   const last=(r.stdout||'').trim().split('\n').filter(Boolean).pop()||'(no output)';
   console.log((r.status?'  FAIL  ':'  ok    ')+name.padEnd(8)+' '+last);
