@@ -33,7 +33,8 @@ updating — it is not a product failure.
 | `freeze.js` | `phase()` and the `toggle()` guard — the board must stop accepting taps once a game is over, including un-spotting. |
 | `panel.js` | `entryPanel()` / `boardHTML()` — rarity grouping, unknown codes, escaping, and your own row staying inert. |
 | `dom.js` | Static structure: every `getElementById` / `data-*` / class selector resolves, plus the invariants past bugs taught us. Also cross-checks `index.html` against `supabase/schema.sql`. |
-| `negtest.js` | Reintroduces 18 real regressions and asserts `dom.js` rejects each one. |
+| `sql.js` | `schema.sql` and `verify.sql`: dollar-quote balance, no stray `$`, every function opening and closing its own body, and the grants this build depends on. |
+| `negtest.js` | Reintroduces 25 real regressions — 18 in `index.html`, 7 in `schema.sql` — and asserts the checker rejects each one. |
 
 ## `negtest.js` is the important one
 
@@ -41,11 +42,24 @@ A static check that would also pass on broken code is worse than no check,
 because it reads as reassurance. Every guard in `dom.js` has a matching
 mutation here that puts the original bug back and proves the guard fires.
 
-This has already earned its keep: a guard written as `/lateDropped/` passed even
-with the counting line deleted, because the identifier still appeared elsewhere
-in the function. The mutation caught it; the guard is now two checks.
+This has already earned its keep three times:
 
-**When you add a guard to `dom.js`, add its mutation here.**
+- A guard written as `/lateDropped/` passed with the counting line deleted,
+  because the identifier still appeared elsewhere in the function.
+- Two `schema.sql` guards passed when their grants were **commented out**, since
+  the substring survives in the comment. They now run against a
+  comment-stripped copy.
+- Most expensively: a patch script collapsed every `$$` to `$` (in a JavaScript
+  replacement string, `$$` is an escape for one literal `$`). The schema was
+  unparseable and *every existing check still passed*, because they all searched
+  for text that was still present. That shipped, and the first thing to notice
+  was Postgres. `sql.js` exists because of it.
+
+The common thread: **"the text I searched for is present" is not the same as
+"this works."** A guard that can't fail is worse than no guard, because it reads
+as reassurance.
+
+**When you add a guard to `dom.js` or `sql.js`, add its mutation here.**
 
 ## Server-side tests
 
