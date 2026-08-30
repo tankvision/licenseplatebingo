@@ -63,16 +63,58 @@ const cases=[
    s=>s.replace('.sbpanel{margin:0 0 0 11px;','.sbpanel{transition:max-height .3s ease;margin:0 0 0 11px;')],
 ];
 
+/* The same idea for schema.sql, checked by sql.js. The first case here is the
+   exact bug that shipped: a patch script used String.replace(from, to), where
+   `$$` in a replacement string is an escape for one literal `$`. Every
+   delimiter it inserted collapsed, and the file failed at the first line
+   Postgres parsed. Every grep still passed. */
+const SCHEMA=path.join(ROOT,'supabase','schema.sql');
+const S=fs.readFileSync(SCHEMA,'utf8');
+const TMPSQL=path.join(os.tmpdir(),'lpb-negtest.sql');
+
+const sqlCases=[
+  ['a dollar-quote delimiter collapsed to a single $',
+   s=>s.replace("returns interval language sql immutable as $$","returns interval language sql immutable as $")],
+  ['a function body never closes',
+   s=>s.replace("  select interval '1 hour';\n$$;","  select interval '1 hour';")],
+  ['the grace window drifts in the schema',
+   s=>s.replace("select interval '1 hour'","select interval '48 hours'")],
+  ['add_spot stops clamping the client timestamp',
+   s=>s.replace('v_when := least(coalesce(p_spotted_at, now()), now());',
+                'v_when := coalesce(p_spotted_at, now());')],
+  ['add_spot stores something other than what it checked',
+   s=>s.replace('values (p_entry, v_game, v_code, p_pts, v_when)',
+                'values (p_entry, v_game, v_code, p_pts, coalesce(p_spotted_at, now()))')],
+  ['entry_spots is never granted, so the panel 404s for everyone',
+   s=>s.replace('grant execute on function entry_spots(uuid)','-- grant execute on function entry_spots(uuid)')],
+  ['game_grace becomes callable by anon',
+   s=>s.replace('revoke execute on function game_grace()','-- revoke execute on function game_grace()')],
+];
+
 let ok=0,bad=0;
+const run=(label,file,checker,args)=>{
+  const r=cp.spawnSync(process.execPath,[path.join(__dirname,checker),...args],{encoding:'utf8'});
+  const caught=r.status!==0;
+  console.log((caught?'  ok    caught: ':'  FAIL  MISSED: ')+label);
+  caught?ok++:bad++;
+};
+
+console.log('── index.html, checked by dom.js ─────────────────────');
 for(const [name,mutate] of cases){
   const out=mutate(H);
   if(out===H){ console.log('  SKIP  '+name+' — mutation did not apply, check the anchor'); bad++; continue; }
   fs.writeFileSync(TMP,out);
-  const r=cp.spawnSync(process.execPath,[path.join(__dirname,'dom.js'),TMP],{encoding:'utf8'});
-  const caught=r.status!==0;
-  console.log((caught?'  ok    caught: ':'  FAIL  MISSED: ')+name);
-  caught?ok++:bad++;
+  run(name,TMP,'dom.js',[TMP]);
 }
-try{fs.unlinkSync(TMP);}catch(e){}
+
+console.log('\n── schema.sql, checked by sql.js ─────────────────────');
+for(const [name,mutate] of sqlCases){
+  const out=mutate(S);
+  if(out===S){ console.log('  SKIP  '+name+' — mutation did not apply, check the anchor'); bad++; continue; }
+  fs.writeFileSync(TMPSQL,out);
+  run(name,TMPSQL,'sql.js',[TMPSQL]);
+}
+
+for(const f of [TMP,TMPSQL]){ try{fs.unlinkSync(f);}catch(e){} }
 console.log(`\n${ok} guards fire, ${bad} do not\n`);
 process.exit(bad?1:0);
