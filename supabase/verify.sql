@@ -26,18 +26,43 @@ declare
   g_lobby text; e_lobby uuid; s_lobby text;
   ts timestamptz; cnt int; i int := 0;
 begin
+  -- ── setup ───────────────────────────────────────────────────────────
+  --
+  -- An already-ended game CANNOT be created: create_game finishes by calling
+  -- join_game to enrol you, and join_game refuses a finished game — rightly,
+  -- since nobody should be able to join one. (That refusal is itself checked
+  -- below.) So every game here is created live and then AGED by moving its
+  -- ends_at backwards, which is the only way to reach the end-of-game paths
+  -- without waiting an hour. Do not "simplify" this back to a past end date.
+
   -- live: started yesterday, ends tomorrow
-  r := create_game('VERIFY live',  now() - interval '1 day',  now() + interval '1 day',  '[]'::jsonb, 'Tester');
+  r := create_game('VERIFY live',  now() - interval '1 day',  now() + interval '1 day', '[]'::jsonb, 'Tester');
   g_live  := r->>'game_id'; e_live  := (r->>'entry_id')::uuid; s_live  := r->>'secret';
-  -- inside the grace: ended 10 minutes ago (game_grace() is 1 hour)
-  r := create_game('VERIFY grace', now() - interval '2 days', now() - interval '10 minutes','[]'::jsonb,'Tester');
+
+  -- inside the grace: aged to have ended 10 minutes ago (game_grace() is 1 hour)
+  r := create_game('VERIFY grace', now() - interval '2 days', now() + interval '1 day', '[]'::jsonb,'Tester');
   g_grace := r->>'game_id'; e_grace := (r->>'entry_id')::uuid; s_grace := r->>'secret';
-  -- past the grace: ended 2 hours ago
-  r := create_game('VERIFY past',  now() - interval '3 days', now() - interval '2 hours',  '[]'::jsonb,'Tester');
+  update games set ends_at = now() - interval '10 minutes' where id = g_grace;
+
+  -- past the grace: aged to have ended 2 hours ago
+  r := create_game('VERIFY past',  now() - interval '3 days', now() + interval '1 day', '[]'::jsonb,'Tester');
   g_past  := r->>'game_id'; e_past  := (r->>'entry_id')::uuid; s_past  := r->>'secret';
-  -- lobby: hasn't started yet
-  r := create_game('VERIFY lobby', now() + interval '1 day',  now() + interval '2 days',  '[]'::jsonb,'Tester');
+  update games set ends_at = now() - interval '2 hours' where id = g_past;
+
+  -- lobby: hasn't started yet. join_game only checks the END, so this one can
+  -- be created directly.
+  r := create_game('VERIFY lobby', now() + interval '1 day',  now() + interval '2 days', '[]'::jsonb,'Tester');
   g_lobby := r->>'game_id'; e_lobby := (r->>'entry_id')::uuid; s_lobby := r->>'secret';
+
+  -- and the constraint that forced all of the above
+  i := i+1;
+  begin
+    perform create_game('VERIFY impossible', now() - interval '3 days',
+                        now() - interval '1 day', '[]'::jsonb, 'Tester');
+    insert into vres values(i,'a game cannot be created already ended', false, 'accepted — should have been refused');
+  exception when others then
+    insert into vres values(i,'a game cannot be created already ended', true, SQLERRM);
+  end;
 
   ---------------------------------------------------------------- grace window
   i := i+1;
