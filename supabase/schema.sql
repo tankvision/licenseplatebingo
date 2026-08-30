@@ -92,9 +92,9 @@ end $$;
 -- overnight in a dead zone loses its last spots for good. The client owns up
 -- to that with a "missed the deadline" notice rather than hiding it.
 create or replace function game_grace()
-returns interval language sql immutable as $
+returns interval language sql immutable as $$
   select interval '1 hour';
-$;
+$$;
 
 -- ── write API ──────────────────────────────────────────────────────────
 
@@ -273,12 +273,12 @@ $$;
 -- call shaped like the two above instead of a raw table select.
 create or replace function entry_spots(p_entry uuid)
 returns table(code text, pts int, spotted_at timestamptz)
-language sql stable security definer set search_path = public, pg_temp as $
+language sql stable security definer set search_path = public, pg_temp as $$
   select s.code, s.pts, s.spotted_at
   from spots s
   where s.entry_id = p_entry
   order by s.spotted_at desc;
-$;
+$$;
 
 -- ── access rules ───────────────────────────────────────────────────────
 
