@@ -346,8 +346,11 @@ body.scrolled .mini.on{max-height:34px;opacity:1;margin:0 2px 8px}
 
 /* Scoreboard: this is the shared thing everyone stares at, so the numbers get
    real size and the leader is visibly the leader. */
-.sbrow{display:flex;align-items:center;gap:11px;min-height:54px;padding:0 13px;border-radius:9px;
-  background:var(--asphalt);border-left:3px solid var(--edge);margin-top:7px}
+.sbrow{display:flex;align-items:center;gap:11px;width:100%;min-height:54px;padding:0 13px;border-radius:9px;
+  background:var(--asphalt);border:0;border-left:3px solid var(--edge);margin-top:7px;
+  font:inherit;color:inherit;text-align:left;appearance:none;-webkit-appearance:none}
+button.sbrow{cursor:pointer}
+button.sbrow:focus-visible{outline:2px solid var(--sheeting);outline-offset:2px}
 .sbrow.me{border-left-color:var(--guide-lit)}
 .sbrow.lead{border-left-color:var(--r-rare);
   background:linear-gradient(90deg,rgba(232,163,61,.13),var(--asphalt) 62%)}
@@ -363,7 +366,39 @@ body.scrolled .mini.on{max-height:34px;opacity:1;margin:0 2px 8px}
 .sbrow .sc{flex:none;font-family:var(--data);font-size:22px;font-weight:700;color:var(--r-rare);
   letter-spacing:-.02em}
 .sbrow.me .sc{color:var(--guide-lit)}
+.sbchev{flex:none;width:14px;text-align:center;color:var(--mute);font-size:10px}
+.sbrow[aria-expanded="true"] .sbchev{transform:rotate(90deg)}
+
+/* One player's plates, hanging off the row that opened them. Deliberately
+   carries NO animation or transition: renderGame() rebuilds this markup on
+   every realtime event and every 60s heartbeat, and anything animated here
+   would replay each time. A fresh element already at its final size simply
+   appears, which is both simpler and correct. */
+.sbpanel{margin:0 0 0 11px;padding:10px 12px 12px;border-left:2px solid var(--edge);
+  background:rgba(0,0,0,.17);border-radius:0 0 9px 9px}
+.sbpanel i{font-style:normal;font-family:var(--data);font-size:11px;color:var(--mute)}
+.sbtier{display:flex;align-items:baseline;gap:7px;margin:9px 0 5px}
+.sbtier:first-child{margin-top:0}
+.sbtier b{font-family:var(--data);font-size:9.5px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--mute)}
+.sbtier s{text-decoration:none;font-family:var(--data);font-size:9.5px;color:var(--edge)}
+.sbchips{display:flex;flex-wrap:wrap;gap:4px}
+.sbchips s{text-decoration:none;font-family:var(--plate);font-size:11px;font-weight:900;
+  letter-spacing:.04em;padding:4px 6px;border-radius:5px;background:var(--dusk);
+  border-left:3px solid var(--rc);color:var(--blank-hi)}
 .gact{margin-top:11px;font-family:var(--data);font-size:11px;color:var(--mute);line-height:1.65}
+.gmiss{margin-top:9px;font-family:var(--data);font-size:10.5px;color:var(--r-rare);line-height:1.5}
+.recap{position:relative;margin-top:10px;padding:11px 34px 11px 12px;border-radius:9px;
+  background:var(--asphalt);border-left:3px solid var(--r-rare)}
+.recap span{display:block;font-family:var(--data);font-size:9.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--mute)}
+.recap b{display:block;margin-top:2px;font-size:13px;color:var(--sheeting)}
+.recap em{display:block;margin-top:3px;font-style:normal;font-family:var(--data);
+  font-size:11px;color:var(--blank-hi)}
+.rx{position:absolute;top:5px;right:5px;width:28px;height:28px;border:0;background:none;
+  color:var(--mute);font-size:17px;line-height:1;cursor:pointer;border-radius:6px}
+/* the board is frozen once the game is over — say so visually, not just in words */
+body.frozen .row{opacity:.5;cursor:default}
 .gact b{color:var(--blank-hi);font-weight:400}
 .gmeta{display:flex;align-items:center;gap:6px;margin-top:11px;font-family:var(--data);
   font-size:10.5px;color:var(--mute);flex-wrap:wrap}
@@ -760,6 +795,12 @@ function showUndo(code){
 }
 
 function toggle(code){
+  /* The server refuses writes once the game is over, and it is right to. What
+     it cannot do is stop the tap: without this the row still slides out, the
+     celebration still fires and the local score still climbs, while the write
+     is queued, refused and dropped — leaving the deck and the scoreboard
+     disagreeing with nothing on screen to explain it. Blocks un-spotting too. */
+  if(phase()==='over') return snack('This game has ended · keep hunting solo from the results card');
   if(claimed.has(code)){ claimed.delete(code); queue('del',code); hideUndo(); render(false); unlockCheck(); return; }
   const tier=INDEX[code].tier;
   claimed.set(code,Date.now());
@@ -855,6 +896,16 @@ const SB_KEY='sb_publishable_t64k5eE5QNvOKH-348LLvA_b7ogAGTA';
 const gameEl=document.getElementById('game');
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+/* Mirrors game_grace() in schema.sql — keep the two in step. A spot MADE
+   before the deadline is still accepted for this long after it, because you
+   are in a dead zone exactly where the 10-pointers are. Kept short on purpose:
+   the standings settle the same night and stay settled. The cost is real and
+   accepted — the app only flushes while it is open, so a phone closed
+   overnight loses its last spots for good, and missedHTML() says so rather
+   than leaving an unexplained gap between two numbers. */
+const GRACE_MS=3600*1000;
+const gameClosed=()=>!!game&&Date.now()>new Date(game.ends_at).getTime()+GRACE_MS;
+
 async function rpc(fn,body){
   const r=await fetch(SB_URL+'/rest/v1/rpc/'+fn,{
     method:'POST',
@@ -892,9 +943,26 @@ function queue(op,code,pts){
    made during the lobby, or refused during a blip, without any bookkeeping. */
 function reconcile(){
   if(!me) return;
+  if(gameClosed()) return;   /* nothing will be accepted again; stop asking */
+  /* Two cutoffs, both read straight off `claimed` (code → timestamp):
+     — `ends`: past the deadline the server refuses it, so re-queueing every
+       60s forever just burns requests.
+     — `from`: plates found before you joined belong to a different trip. This
+       is join time, NOT game start, so lobby spots (made after you joined but
+       before the game began) still count — that rescue is the whole reason
+       add_spot's start check stayed arrival-based.
+     A legacy board with no timestamps reads as 0: eligible against `ends`
+     (can't prove it's late) and excluded by `from` (definitely older). */
+  const ends=game?new Date(game.ends_at).getTime():Infinity;
+  const from=(me&&me.joined_at)||0;
   const pending=new Set(outbox.map(o=>o.code));
-  for(const code of claimed.keys())
-    if(live(code)&&!synced.has(code)&&!pending.has(code)) queue('add',code,INDEX[code].pts);
+  for(const code of claimed.keys()){
+    if(!live(code)||synced.has(code)||pending.has(code)) continue;
+    const ts=claimed.get(code)||0;
+    if(ts>ends) continue;
+    if(from&&ts<from) continue;
+    queue('add',code,INDEX[code].pts);
+  }
   for(const code of synced)
     if(!claimed.has(code)&&!pending.has(code)) queue('del',code);
 }
@@ -903,6 +971,7 @@ let flushing=false;
 async function flush(){
   if(flushing||!me||!outbox.length||navigator.onLine===false) return;
   flushing=true;
+  let lateDropped=0;
   try{
     while(outbox.length){
       const o=outbox[0];
@@ -921,6 +990,7 @@ async function flush(){
           /* refused for a reason we can't fix by waiting on this item —
              drop it so it can't block the queue; reconcile() re-queues it
              later if it still matters (e.g. the game hadn't started yet) */
+          if(o.op==='add'&&/ended/i.test(err.message||'')) lateDropped++;
           outbox.shift();
         }else{
           o.tries=(o.tries||0)+1;          /* no signal: keep it and retry */
@@ -929,15 +999,23 @@ async function flush(){
       }
       saveOutbox();
     }
-    await syncBonus();
+    /* a refused bonus must not skip the board refresh on the next line */
+    try{ await syncBonus(); }catch(e){}
     await refreshBoard();
   }catch(e){ /* whatever is left stays queued for the next try */ }
-  finally{ flushing=false; renderGame(); }
+  finally{
+    flushing=false;
+    /* At a 1-hour grace a missed spot is a normal outcome, not a rarity, so it
+       cannot stay silent — dropping it without a word is what would recreate
+       the "deck says 152, scoreboard says 138" gap this all exists to close. */
+    if(lateDropped) snack(lateDropped+' plate'+(lateDropped===1?'':'s')+' missed the deadline');
+    renderGame();
+  }
 }
 
 let lastBonus=null;
 async function syncBonus(){
-  if(!me) return;
+  if(!me||gameClosed()) return;
   const b=totals().bonus;
   if(b===lastBonus) return;
   await rpc('set_bonus',{p_entry:me.id,p_secret:me.secret,p_bonus:b});
@@ -984,6 +1062,17 @@ const fmtAgo=ts=>{
   return Math.floor(s/86400)+'d ago';
 };
 const day=d=>new Date(d).toLocaleDateString([],{month:'short',day:'numeric'});
+/* The deadline is one absolute instant for everyone — nobody gains three hours
+   by driving west, and that is correct. But "Ends Aug 22" reads as YOUR
+   midnight, so a Denver player in a DC game is wrong by two hours. Render the
+   stored instant in the reader's own zone and name the time only when it isn't
+   their local midnight, so the string appears exactly when it matters. */
+const endsWhen=(d,verb)=>{
+  const t=new Date(d);
+  return t.getHours()===23&&t.getMinutes()===59
+    ? `${verb} ${day(d)}.`
+    : `${verb} ${day(d)}, ${t.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})} your time.`;
+};
 const phase=()=>{
   if(!game) return 'none';
   const n=Date.now();
@@ -994,17 +1083,60 @@ const phase=()=>{
 const inviteURL=()=>location.origin+location.pathname+'?g='+game.id;
 const card=(h,p,body)=>`<div class="gamecard"><h2>${h}</h2><p>${p}</p>${body||''}</div>`;
 
+/* ── drilling into a player ──
+   `spots` has always been world-readable, so this shows nothing that wasn't
+   already reachable — the old totals-only rule was presentation, not privacy.
+   Cached in memory only: it's a peek at someone else's board, not a save file. */
+let openEntry=null;
+const entryCache=new Map();
+async function loadEntry(id){
+  try{
+    const rows=await rpc('entry_spots',{p_entry:id});
+    entryCache.set(id,{codes:(rows||[]).map(x=>x.code)});
+  }catch(e){
+    /* a failed refresh must not wipe a list we already have */
+    if(!entryCache.has(id)) entryCache.set(id,{err:true});
+  }
+  if(openEntry===id) renderGame();
+}
+function toggleEntry(id){
+  openEntry=openEntry===id?null:id;
+  renderGame();
+  if(openEntry) loadEntry(id);
+}
+function entryPanel(r){
+  const c=entryCache.get(r.entry_id);
+  if(!c)     return `<div class="sbpanel"><i>Loading…</i></div>`;
+  if(c.err)  return `<div class="sbpanel"><i>No signal — can’t load their plates.</i></div>`;
+  const codes=c.codes.filter(live);   /* a plate from a future version can't throw */
+  if(!codes.length) return `<div class="sbpanel"><i>Nothing spotted yet.</i></div>`;
+  let h='';
+  for(const k of [...ORDER].reverse()){          /* legendary first: the good stuff on top */
+    const set=codes.filter(x=>INDEX[x].tier===k).sort(byName);
+    if(!set.length) continue;
+    h+=`<div class="sbtier"><b>${TIER[k].label}</b><s>${set.length}</s></div>`
+      +`<div class="sbchips">`
+      +set.map(x=>`<s style="--rc:${TIER[k].color}">${x}</s>`).join('')
+      +`</div>`;
+  }
+  return `<div class="sbpanel">${h}</div>`;
+}
 function boardHTML(){
   const rows=(board&&board.rows)||[];
   if(!rows.length) return `<div class="gact">Nobody has spotted anything yet.</div>`;
   return rows.map((r,i)=>{
     const mine=me&&r.entry_id===me.id;
     const lead=i===0&&r.score>0;
-    return `<div class="sbrow${mine?' me':''}${lead?' lead':''}">
-      <span class="rank">${lead?'🏆':i+1}</span>
+    const inner=`<span class="rank">${lead?'🏆':i+1}</span>
       <span class="who">${esc(r.name)}${mine?'<u>you</u>':''}<em>${r.found} plate${r.found===1?'':'s'}</em></span>
-      <span class="sc">${r.score}</span>
-    </div>`;
+      <span class="sc">${r.score}</span>`;
+    /* your own row doesn't open: your list is the Spotted section one screen
+       down, and a tap that leads somewhere you've already been is just a tax */
+    if(mine) return `<div class="sbrow me${lead?' lead':''}">${inner}</div>`;
+    const open=openEntry===r.entry_id;
+    return `<button class="sbrow${lead?' lead':''}" data-entry="${r.entry_id}" aria-expanded="${open}">`
+      +inner+`<span class="sbchev">▶</span></button>`
+      +(open?entryPanel(r):'');
   }).join('');
 }
 function actHTML(){
@@ -1020,6 +1152,59 @@ function metaHTML(){
     +(outbox.length?`<span class="gpend">· ${outbox.length} waiting to sync</span>`:'')
     +(board&&board.at?` · updated ${fmtAgo(board.at)}`:'')+`</div>`;
 }
+/* ── the ending ──
+   A week-long hunt deserves a result, not a frozen scoreboard with a Leave
+   button. Everything below is built from data already stored: every spot
+   carries a timestamp, so the trip line costs nothing to produce. */
+function gameWindow(){
+  return [(me&&me.joined_at)||0, game?new Date(game.ends_at).getTime():Infinity];
+}
+function statsHTML(){
+  const [from,end]=gameWindow();
+  const mine=[...claimed.entries()]
+    .filter(([c,t])=>live(c)&&t&&t>=from&&t<=end)
+    .sort((a,b)=>a[1]-b[1]);
+  if(!mine.length) return '';
+  const byDay=new Map();
+  for(const [,t] of mine){
+    const k=new Date(t).toDateString();
+    byDay.set(k,(byDay.get(k)||0)+1);
+  }
+  let bestK=null,bestN=0;
+  for(const [k,n] of byDay) if(n>bestN){ bestN=n; bestK=k; }
+  const parts=[`${mine.length} plate${mine.length===1?'':'s'}`];
+  if(bestN>1) parts.push(`best day ${new Date(bestK).toLocaleDateString([],{weekday:'long'})}, ${bestN}`);
+  parts.push(`first ${INDEX[mine[0][0]].name}`);
+  if(mine.length>1) parts.push(`last ${INDEX[mine[mine.length-1][0]].name}`);
+  return `<div class="gact">${parts.join(' · ')}</div>`;
+}
+function achFinalHTML(){
+  const e=achEarned();
+  if(!e.length) return '';
+  return `<div class="gact">${e.map(a=>a.e).join(' ')} · ${e.length} achievement${e.length===1?'':'s'}`
+    +` · +${e.reduce((s,a)=>s+a.p,0)} pts</div>`;
+}
+/* Plates found inside the window that never reached the server. At a 1-hour
+   grace this is a real outcome, so it gets said out loud rather than left for
+   someone to notice as an unexplained gap between two numbers. */
+function missedHTML(){
+  if(!game||!me) return '';
+  const [from,end]=gameWindow();
+  let n=0;
+  for(const [c,t] of claimed)
+    if(live(c)&&t&&t>=from&&t<=end&&!synced.has(c)) n++;
+  return n?`<div class="gmiss">${n} plate${n===1?'':'s'} never reached the scoreboard.`
+    +` They still count on your own board.</div>`:'';
+}
+function recapHTML(){
+  const r=readJSON('lpb.recap',null);
+  if(!r||!Array.isArray(r.rows)||!r.rows.length) return '';
+  const line=r.rows.slice(0,3).map((x,i)=>
+    `${i===0?'🏆 ':''}${x.entry_id===r.me?'You':esc(x.name)} ${x.score}`).join(' · ');
+  return `<div class="recap"><button class="rx" id="dropRecap" aria-label="Dismiss">×</button>`
+    +`<span>Last game · ${day(r.ends_at)}</span><b>${esc(r.name)}</b><em>${line}</em></div>`;
+}
+
 /* ── the pinned strip: leader + you ──
    Built from the same cached board the card uses, so it survives a dead zone.
    Solo play and the create/join form never render it. */
@@ -1053,16 +1238,21 @@ function renderMini(){
 function renderGame(){
   const p=phase();
   renderMini();
+  document.body.classList.toggle('frozen',p==='over');
   if(p==='none'){
     const inv=new URLSearchParams(location.search).get('g');
     gameEl.innerHTML=inv
-      ? card('You’re invited','Pick a name for yourself or your team and you’re in.',
+      ? card('You’re invited','Pick a name for yourself or your team and you’re in.'
+          /* said up front, because it used to happen silently in reverse: joining
+             pushed your whole history up and handed you a score from months ago */
+          +(claimed.size?' Plates you’ve already found stay on your board, but this game starts from zero.':''),
           `<div class="gform"><label for="jn">Name</label>
              <input id="jn" maxlength="40" placeholder="The Back Seat"></div>
            <div class="gamebtns"><button class="gbtn" id="doJoin">Join game</button>
              <button class="gbtn alt" id="noJoin">Not now</button></div>`)
-      : card('Group play','Everyone keeps their own board. The scoreboard shows totals only.',
-          `<div class="gamebtns"><button class="gbtn" id="newGame">Start a game</button></div>`);
+      : card('Group play','Everyone keeps their own board. Tap anyone on the scoreboard to see what they’ve found.',
+          `<div class="gamebtns"><button class="gbtn" id="newGame">Start a game</button></div>`)
+        +recapHTML();
     return;
   }
   const btns=`<div class="gamebtns">
@@ -1072,18 +1262,23 @@ function renderGame(){
     gameEl.innerHTML=card(esc(game.name),`Starts ${day(game.starts_at)}. Share the link so everyone can join first.`,
       boardHTML()+btns+metaHTML());
   else if(p==='over')
-    gameEl.innerHTML=card(esc(game.name)+' · final',`Ended ${day(game.ends_at)}. Boards are frozen.`,
-      boardHTML()+actHTML()+`<div class="gamebtns"><button class="gbtn alt" id="leave">Leave game</button></div>`);
+    /* the results card: the best moment in the app, not a dead end */
+    gameEl.innerHTML=card(esc(game.name)+' · final',endsWhen(game.ends_at,'Ended'),
+      boardHTML()+statsHTML()+achFinalHTML()+actHTML()+missedHTML()
+      +`<div class="gamebtns">
+          <button class="gbtn" id="shareFinal">Share result</button>
+          <button class="gbtn alt" id="again">Run it back</button>
+          <button class="gbtn alt" id="leave">Keep hunting solo</button></div>`);
   else
-    gameEl.innerHTML=card(esc(game.name),`Ends ${day(game.ends_at)}.`,
+    gameEl.innerHTML=card(esc(game.name),endsWhen(game.ends_at,'Ends'),
       boardHTML()+actHTML()+btns+metaHTML());
 }
-function createForm(){
+function createForm(prefill){
   const d=x=>new Date(x).toISOString().slice(0,10);
   gameEl.innerHTML=card('Start a game',
     'Everyone plays the same full board — states, territories, provinces and special plates — so the scores compare.',
     `<div class="gform">
-       <label for="gn">Game name</label><input id="gn" maxlength="60" placeholder="Summer road trip">
+       <label for="gn">Game name</label><input id="gn" maxlength="60" placeholder="Summer road trip" value="${esc(prefill||'')}">
        <label for="gs">Starts</label><input id="gs" type="date" value="${d(Date.now())}">
        <label for="ge">Ends</label><input id="ge" type="date" value="${d(Date.now()+7*864e5)}">
        <label for="gp">Your name (or your team’s)</label><input id="gp" maxlength="40" placeholder="The Back Seat">
@@ -1109,7 +1304,7 @@ async function doCreate(btn){
     const r=await rpc('create_game',{p_name:name,p_starts_at:starts,p_ends_at:ends,
       p_ruleset:ALL_GROUPS,p_entry_name:who});
     game={id:r.game_id,name,starts_at:starts,ends_at:ends,ruleset:ALL_GROUPS};
-    me={id:r.entry_id,secret:r.secret,name:r.name,game_id:r.game_id};
+    me={id:r.entry_id,secret:r.secret,name:r.name,game_id:r.game_id,joined_at:Date.now()};
     saveGame(); joinedGame(); snack('Game created');
   }catch(err){ btn.disabled=false; btn.textContent='Create'; snack(err.message||'Could not create the game'); }
 }
@@ -1123,23 +1318,48 @@ async function doJoin(btn){
     if(!g) throw new Error('That invite link is not valid');
     const r=await rpc('join_game',{p_game:gid,p_entry_name:who});
     game={id:g.id,name:g.name,starts_at:g.starts_at,ends_at:g.ends_at,ruleset:g.ruleset||[]};
-    me={id:r.entry_id,secret:r.secret,name:r.name,game_id:gid};
+    me={id:r.entry_id,secret:r.secret,name:r.name,game_id:gid,joined_at:Date.now()};
     saveGame(); joinedGame(); snack('You’re in');
     history.replaceState({},'',location.pathname);
   }catch(err){ btn.disabled=false; btn.textContent='Join game'; snack(err.message||'Could not join'); }
 }
-/* on create/join: whatever is already on this board counts, so send it up */
+/* on create/join: reconcile() sends up what counts, which is now only what you
+   spot from this moment on. It used to be your entire board — three months of
+   solo hunting arriving as a head start the moment you joined someone's trip. */
 function joinedGame(){
   synced=new Set();
   reconcile();
   render(false); subscribe(); flush(); refreshBoard();
 }
-function leaveGame(){
-  if(!confirm('Leave this game? Your own board stays exactly as it is.')) return;
+function leaveGame(force){
+  if(!force&&!confirm('Leave this game? Your own board stays exactly as it is.')) return;
+  /* a finished game leaves a result behind, so "keep hunting" isn't "delete it" */
+  if(phase()==='over'&&board&&board.rows&&board.rows.length)
+    store.set('lpb.recap',JSON.stringify({
+      name:game.name, ends_at:game.ends_at, me:me&&me.id, rows:board.rows.slice(0,3)
+    }));
   if(channel){ try{ channel.unsubscribe(); }catch(e){} channel=null; }
   game=null; me=null; board=null; outbox=[]; synced=new Set(); lastBonus=null;
+  openEntry=null; entryCache.clear();
   store.set('lpb.board',''); saveOutbox(); saveGame();
   render(false); renderGame();
+}
+/* the same game name, a fresh week — the end of one hunt is where the next
+   one gets proposed, rather than a dead end with a Leave button */
+function runItBack(){
+  const nm=game&&game.name||'';
+  leaveGame(true);
+  createForm(nm);
+}
+async function shareFinal(){
+  const rows=(board&&board.rows)||[];
+  const line=rows.slice(0,3).map((x,i)=>
+    `${i===0?'🏆 ':''}${x.entry_id===(me&&me.id)?'You':x.name} ${x.score}`).join(' · ');
+  const text=`🏁 ${game.name} — final\n${line}\n\n`+buildShare();
+  try{
+    if(navigator.share){ await navigator.share({text}); return; }
+    await navigator.clipboard.writeText(text); snack('Result copied');
+  }catch(e){ if(e&&e.name!=='AbortError') snack('Could not share'); }
 }
 async function shareInvite(){
   const text=`Join my Plate Hunt game “${game.name}”\n${inviteURL()}`;
@@ -1151,11 +1371,16 @@ async function shareInvite(){
 
 gameEl.addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.entry)       return toggleEntry(b.dataset.entry);
   if(b.id==='newGame')      return createForm();
   if(b.id==='cancelCreate') return renderGame();
   if(b.id==='noJoin'){ history.replaceState({},'',location.pathname); return renderGame(); }
   if(b.id==='invite')       return shareInvite();
-  if(b.id==='leave')        return leaveGame();
+  /* over: the recap is already saved, so there is nothing to warn about */
+  if(b.id==='leave')        return leaveGame(phase()==='over');
+  if(b.id==='again')        return runItBack();
+  if(b.id==='shareFinal')   return shareFinal();
+  if(b.id==='dropRecap'){ store.set('lpb.recap',''); return renderGame(); }
   if(b.id==='doCreate')     return doCreate(b);
   if(b.id==='doJoin')       return doJoin(b);
 });
