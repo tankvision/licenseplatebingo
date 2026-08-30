@@ -115,6 +115,30 @@ for(const [name,mutate] of sqlCases){
   run(name,TMPSQL,'sql.js',[TMPSQL]);
 }
 
-for(const f of [TMP,TMPSQL]){ try{fs.unlinkSync(f);}catch(e){} }
+/* verify.sql needs one direct write — aging a game's deadline, since an
+   already-ended game cannot be created. That write has to stay narrow. */
+const VERIFY=path.join(ROOT,'supabase','verify.sql');
+const Vsrc=fs.readFileSync(VERIFY,'utf8');
+const TMPV=path.join(os.tmpdir(),'lpb-negtest-verify.sql');
+const verifyCases=[
+  ['the deadline-aging update loses its WHERE clause',
+   s=>s.replace("update games set ends_at = now() - interval '10 minutes' where id = g_grace;",
+                "update games set ends_at = now() - interval '10 minutes';")],
+  ['verify.sql stops rolling back, stranding VERIFY games',
+   s=>s.replace(/^rollback;$/m,'commit;')],
+  ['verify.sql starts deleting directly',
+   s=>s.replace('select n, check_name, ok, detail from vres order by n;',
+                "delete from spots where code = 'MT';\nselect n, check_name, ok, detail from vres order by n;")],
+];
+
+console.log('\n── verify.sql, checked by sql.js ─────────────────────');
+for(const [name,mutate] of verifyCases){
+  const out=mutate(Vsrc);
+  if(out===Vsrc){ console.log('  SKIP  '+name+' — mutation did not apply, check the anchor'); bad++; continue; }
+  fs.writeFileSync(TMPV,out);
+  run(name,TMPV,'sql.js',[SCHEMA,TMPV]);
+}
+
+for(const f of [TMP,TMPSQL,TMPV]){ try{fs.unlinkSync(f);}catch(e){} }
 console.log(`\n${ok} guards fire, ${bad} do not\n`);
 process.exit(bad?1:0);
