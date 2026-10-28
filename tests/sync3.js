@@ -19,7 +19,7 @@ const src =
   slice('const SB_URL=','const gameEl=','keys') + '\n' +
   slice('const esc=s=>','async function getGame(','sync core') + `
 module.exports={queue,reconcile,flush,rpc,
-  state:()=>({outbox,synced:[...synced].sort()}),
+  state:()=>({outbox,synced:[...synced].sort(),sbDown}),
   setMe:v=>{me=v}, setGame:v=>{game=v},
   spot:(c)=>claimed.set(c,Date.now()), unspot:(c)=>claimed.delete(c),
   setOutbox:v=>{outbox=v}, setSynced:v=>{synced=new Set(v)}};`;
@@ -48,6 +48,8 @@ global.fetch=async(url,opt)=>{
   const body=opt&&opt.body?JSON.parse(opt.body):{};
   server.calls.push(fn+':'+(body.p_code||''));
   if(server.mode==='offline') throw new TypeError('network');
+  if(server.mode==='paused')
+    return {ok:false,status:540,text:async()=>JSON.stringify({message:'project paused'})};
   if(server.mode==='refuse'&&(fn==='add_spot'||fn==='remove_spot'))
     return {ok:false,status:403,text:async()=>JSON.stringify({message:'game has not started'})};
   if(server.mode==='refuse-ended'&&fn==='add_spot')
@@ -105,6 +107,19 @@ server.mode='ok';
 await S.flush(); await settle();
 t('it flushes on the next try',     [...server.spots], ['MT']);
 t('outbox is empty',                S.state().outbox.length, 0);
+
+console.log('\n── a paused server is down, not a refusal ────────────');
+/* a 5xx must keep the spot queued like no-signal, and flag the server as
+   unreachable so the dot stops saying "Live" */
+reset();
+server.mode='paused';
+S.spot('MT'); S.queue('add','MT',10); await settle();
+t('the spot waits in the outbox',   S.state().outbox.map(o=>o.code), ['MT']);
+t('the server is flagged down',     S.state().sbDown, true);
+server.mode='ok';
+await S.flush(); await settle();
+t('it lands once the server is back', [...server.spots], ['MT']);
+t('and the flag clears',            S.state().sbDown, false);
 
 console.log('\n── a refusal is dropped, not retried forever ─────────');
 /* refused means the server understood and said no; waiting cannot fix it, so

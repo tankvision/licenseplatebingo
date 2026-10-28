@@ -2,7 +2,7 @@
    BUMP THIS STRING EVERY TIME YOU CHANGE index.html.
    Nothing else in the deploy matters as much as this line.
    ───────────────────────────────────────────────────────────── */
-const VERSION = 'lpb-2026-08-29a';
+const VERSION = 'lpb-2026-10-28a';
 
 const FONTS = VERSION + '-fonts';
 const SHELL = [

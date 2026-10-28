@@ -906,14 +906,28 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 const GRACE_MS=3600*1000;
 const gameClosed=()=>!!game&&Date.now()>new Date(game.ends_at).getTime()+GRACE_MS;
 
+/* Is the phone online but the server not answering? navigator.onLine only
+   knows about the phone, so on its own the dot said "Live" all through a paused
+   free-tier project. Any answer at all — even a refusal — means it's up. */
+let sbDown=false;
+async function sbFetch(url,opt){
+  let r;
+  try{ r=await fetch(url,opt); }
+  catch(e){ if(navigator.onLine!==false) sbDown=true; throw e; }
+  sbDown=r.status>=500;
+  return r;
+}
 async function rpc(fn,body){
-  const r=await fetch(SB_URL+'/rest/v1/rpc/'+fn,{
+  const r=await sbFetch(SB_URL+'/rest/v1/rpc/'+fn,{
     method:'POST',
     headers:{apikey:SB_KEY,'Content-Type':'application/json'},
     body:JSON.stringify(body)
   });
   const t=await r.text();
   let j=null; try{ j=t?JSON.parse(t):null; }catch(e){}
+  /* a 5xx is the server being down (paused, restarting), not a verdict on this
+     spot — leave `refused` unset so flush() keeps it queued like no-signal */
+  if(r.status>=500) throw new Error('HTTP '+r.status);
   if(!r.ok){
     /* the server understood and refused — distinct from "no signal", which throws above */
     const err=new Error((j&&(j.message||j.details))||('HTTP '+r.status));
@@ -1034,7 +1048,8 @@ async function refreshBoard(){
   renderGame();
 }
 async function getGame(id){
-  const r=await fetch(SB_URL+'/rest/v1/games?select=*&id=eq.'+encodeURIComponent(id),{headers:{apikey:SB_KEY}});
+  const r=await sbFetch(SB_URL+'/rest/v1/games?select=*&id=eq.'+encodeURIComponent(id),{headers:{apikey:SB_KEY}});
+  if(r.status>=500) throw new Error('HTTP '+r.status);   /* down, not "invalid link" */
   const j=await r.json();
   return Array.isArray(j)&&j[0]?j[0]:null;
 }
@@ -1147,8 +1162,8 @@ function actHTML(){
   ).join('<br>')+`</div>`;
 }
 function metaHTML(){
-  const on=navigator.onLine!==false;
-  return `<div class="gmeta"><span class="gdot${on?' on':''}"></span>${on?'Live':'Offline'}`
+  const on=navigator.onLine!==false, up=on&&!sbDown;
+  return `<div class="gmeta"><span class="gdot${up?' on':''}"></span>${!on?'Offline':up?'Live':'Can’t reach server'}`
     +(outbox.length?`<span class="gpend">· ${outbox.length} waiting to sync</span>`:'')
     +(board&&board.at?` · updated ${fmtAgo(board.at)}`:'')+`</div>`;
 }
@@ -1306,7 +1321,7 @@ async function doCreate(btn){
     game={id:r.game_id,name,starts_at:starts,ends_at:ends,ruleset:ALL_GROUPS};
     me={id:r.entry_id,secret:r.secret,name:r.name,game_id:r.game_id,joined_at:Date.now()};
     saveGame(); joinedGame(); snack('Game created');
-  }catch(err){ btn.disabled=false; btn.textContent='Create'; snack(err.message||'Could not create the game'); }
+  }catch(err){ btn.disabled=false; btn.textContent='Create'; snack(err.refused?err.message:unreachable()); }
 }
 async function doJoin(btn){
   const gid=new URLSearchParams(location.search).get('g');
@@ -1315,14 +1330,18 @@ async function doJoin(btn){
   btn.disabled=true; btn.textContent='Joining…';
   try{
     const g=await getGame(gid);
-    if(!g) throw new Error('That invite link is not valid');
+    if(!g) throw Object.assign(new Error('That invite link is not valid'),{invalid:true});
     const r=await rpc('join_game',{p_game:gid,p_entry_name:who});
     game={id:g.id,name:g.name,starts_at:g.starts_at,ends_at:g.ends_at,ruleset:g.ruleset||[]};
     me={id:r.entry_id,secret:r.secret,name:r.name,game_id:gid,joined_at:Date.now()};
     saveGame(); joinedGame(); snack('You’re in');
     history.replaceState({},'',location.pathname);
-  }catch(err){ btn.disabled=false; btn.textContent='Join game'; snack(err.message||'Could not join'); }
+  }catch(err){ btn.disabled=false; btn.textContent='Join game'; snack(err.refused||err.invalid?err.message:unreachable()); }
 }
+/* "Load failed" / "HTTP 540" told you nothing; say which end is down */
+const unreachable=()=>navigator.onLine===false
+  ?'No signal — try again once you have one'
+  :'Group play is offline right now — try again later';
 /* on create/join: reconcile() sends up what counts, which is now only what you
    spot from this moment on. It used to be your entire board — three months of
    solo hunting arriving as a head start the moment you joined someone's trip. */
